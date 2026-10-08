@@ -1,0 +1,685 @@
+---
+description: Boas práticas de código Go para este repositório, com foco no uso da standard library
+globs: **/*.go
+alwaysApply: false
+---
+
+# Boas práticas de Go
+
+Este documento define como código Go deve ser escrito neste repositório. Siga-o sempre que criar, editar ou revisar arquivos `.go`. O projeto usa **Go 1.24** (veja `go.mod`); use os recursos dessa versão e não use recursos de versões posteriores.
+
+## 1. Princípios
+
+1. **Standard library primeiro.** Antes de adicionar qualquer dependência, verifique se a stdlib resolve. Na grande maioria dos casos, resolve.
+2. **Simples e explícito vence esperto e mágico.** Nada de reflexão, `init()` com efeitos colaterais ou frameworks que escondem o fluxo.
+3. **Código idiomático.** Ele deve passar em `gofmt`, `go vet` e `go test -race ./...` sem avisos.
+4. **Erros são valores.** Trate, envolva com contexto ou retorne. Nunca ignore.
+5. **Aceite interfaces, retorne structs.** Interfaces pequenas, definidas por quem as consome.
+6. **Toda feature tem testes.** Nenhuma feature, mudança de comportamento ou correção de bug é entregue sem testes cobrindo seu funcionamento (veja a seção 10).
+
+## 2. Standard library primeiro
+
+### Dependências externas permitidas
+
+Somente estas, porque a stdlib não oferece equivalente:
+
+| Necessidade | Pacote |
+|---|---|
+| PostgreSQL | `github.com/jackc/pgx/v5` |
+| Redis | `github.com/redis/go-redis/v9` |
+| Kafka | `github.com/twmb/franz-go` |
+
+Qualquer outra dependência exige justificativa explícita do usuário. **Não adicione dependências por conta própria.**
+
+### Use a stdlib no lugar destas bibliotecas
+
+| Necessidade | Use (stdlib) | Não use |
+|---|---|---|
+| Servidor HTTP / roteamento | `net/http` (`ServeMux` com padrões `"GET /rides/{id}"`, `r.PathValue`) | gin, echo, chi, gorilla/mux, fiber |
+| Cliente HTTP | `net/http` com `http.Client{Timeout: ...}` | resty, req |
+| Logging | `log/slog` | logrus, zap, zerolog |
+| Erros | `errors` (`Is`, `As`, `Join`) + `fmt.Errorf("...: %w", err)` | pkg/errors, cockroachdb/errors |
+| Configuração | `os.Getenv`, `os.LookupEnv`, `flag`, `strconv` | viper, envconfig, godotenv |
+| JSON | `encoding/json` | jsoniter, easyjson |
+| Testes / asserts | `testing`, `net/http/httptest`, `reflect.DeepEqual`, `cmp` (stdlib) | testify, gomega, ginkgo |
+| Mocks | fakes escritos à mão que implementam a interface | gomock, mockery |
+| Manipular slices e maps | `slices`, `maps`, builtins `min`/`max` | lo, funk |
+| Concorrência | `sync`, `context`, channels | conc, ants |
+| Tempo | `time` | carbon, now |
+| IDs aleatórios | `crypto/rand` (`rand.Text()` no Go 1.24) | — avalie antes de trazer uma lib de UUID |
+| Hash / criptografia | `crypto/*`, `hash/*` | — |
+| Matemática geográfica | `math` | — |
+
+### Exemplo: roteamento HTTP
+
+**Faça** — `net/http` puro com os padrões de rota do Go 1.22+:
+
+```go
+func (h *Handler) Routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /rides", h.createRide)
+	mux.HandleFunc("GET /rides/{id}", h.getRide)
+	mux.HandleFunc("DELETE /rides/{id}", h.cancelRide)
+	return mux
+}
+
+func (h *Handler) getRide(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	got, err := h.svc.Get(r.Context(), id)
+	if errors.Is(err, ride.ErrNotFound) {
+		http.Error(w, "ride not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		h.log.ErrorContext(r.Context(), "get ride", "id", id, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, got)
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+```
+
+**Não faça** — trazer um framework só para ter rotas com parâmetros:
+
+```go
+import "github.com/gin-gonic/gin" // dependência desnecessária
+
+func Routes(svc *Service) *gin.Engine {
+	r := gin.Default()
+	r.GET("/rides/:id", func(c *gin.Context) {
+		ride, _ := svc.Get(c, c.Param("id")) // erro ignorado
+		c.JSON(200, ride)
+	})
+	return r
+}
+```
+
+### Exemplo: manipulação de slices
+
+**Faça:**
+
+```go
+slices.SortFunc(drivers, func(a, b Driver) int {
+	return cmp.Compare(a.DistanceMeters, b.DistanceMeters)
+})
+nearest := drivers[:min(len(drivers), 5)]
+
+if slices.ContainsFunc(drivers, func(d Driver) bool { return d.ID == id }) {
+	// ...
+}
+```
+
+**Não faça:**
+
+```go
+import "github.com/samber/lo"
+
+nearest := lo.Slice(lo.SortBy(drivers, func(d Driver) float64 { return d.DistanceMeters }), 0, 5)
+
+// nem reimplementar à mão o que já existe em slices/sort:
+for i := 0; i < len(drivers); i++ {
+	for j := i + 1; j < len(drivers); j++ {
+		if drivers[j].DistanceMeters < drivers[i].DistanceMeters {
+			drivers[i], drivers[j] = drivers[j], drivers[i]
+		}
+	}
+}
+```
+
+## 3. Tratamento de erros
+
+- Sempre verifique `err`. Só use `_ =` quando ignorar for intencional e seguro (por exemplo, o `Encode` final de uma resposta HTTP).
+- Envolva com contexto usando `%w`. A mensagem descreve **a operação que falhou**, em minúsculas e sem pontuação final.
+- Use erros sentinela (`var ErrX = errors.New(...)`) ou tipos de erro para condições que o chamador precisa distinguir. Compare com `errors.Is` e `errors.As`, nunca com `==` em erros envolvidos nem comparando strings.
+- Não registre um erro em log **e** o retorne ao mesmo tempo. Escolha um: quem trata, registra.
+- `panic` só em erros de programação irrecuperáveis durante a inicialização. Nunca para controle de fluxo.
+
+**Faça:**
+
+```go
+var ErrNotFound = errors.New("ride not found")
+
+func (r *Repository) Get(ctx context.Context, id string) (Ride, error) {
+	var ride Ride
+	err := r.db.QueryRow(ctx, `SELECT id, status FROM rides WHERE id = $1`, id).
+		Scan(&ride.ID, &ride.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Ride{}, ErrNotFound
+	}
+	if err != nil {
+		return Ride{}, fmt.Errorf("query ride %s: %w", id, err)
+	}
+	return ride, nil
+}
+```
+
+**Não faça:**
+
+```go
+func (r *Repository) Get(ctx context.Context, id string) (*Ride, error) {
+	var ride Ride
+	err := r.db.QueryRow(ctx, "SELECT id, status FROM rides WHERE id = '"+id+"'"). // SQL injection
+		Scan(&ride.ID, &ride.Status)
+	if err != nil {
+		log.Println("Error:", err)                       // loga E retorna
+		return nil, errors.New("Error getting ride: " + err.Error()) // perde a cadeia de erros
+	}
+	return &ride, nil
+}
+
+// e no chamador:
+if err.Error() == "no rows in result set" { ... } // comparar strings de erro
+```
+
+## 4. Context
+
+- `context.Context` é **o primeiro parâmetro** de toda função que faz I/O, bloqueia ou pode ser cancelada. Nome: `ctx`.
+- Nunca guarde `context.Context` dentro de structs.
+- Nunca passe `nil` como contexto. Em `main` e em testes, use `context.Background()` ou `t.Context()` (Go 1.24).
+- Sempre chame o `cancel` retornado por `context.WithTimeout`/`WithCancel` (`defer cancel()`).
+- Defina timeouts em toda chamada de rede de saída.
+
+**Faça:**
+
+```go
+func (c *RoutingClient) ETA(ctx context.Context, from, to geo.Point) (time.Duration, error) {
+	ctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.etaURL(from, to), nil)
+	if err != nil {
+		return 0, fmt.Errorf("build eta request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("call routing service: %w", err)
+	}
+	defer resp.Body.Close()
+	// ...
+}
+```
+
+**Não faça:**
+
+```go
+type RoutingClient struct {
+	ctx context.Context // contexto guardado em struct
+}
+
+func (c *RoutingClient) ETA(from, to geo.Point) time.Duration {
+	resp, _ := http.Get(c.etaURL(from, to)) // sem contexto, sem timeout, erro ignorado, body nunca fechado
+	// ...
+}
+```
+
+## 5. Interfaces e design de pacotes
+
+- Defina a interface **no pacote que a consome**, com apenas os métodos que ele usa.
+- Construtores retornam tipos concretos (`*Service`), não interfaces.
+- Não crie interfaces "por precaução" quando só existe uma implementação e nenhum teste precisa trocá-la.
+- Injete dependências por parâmetros do construtor. Nada de variáveis globais mutáveis nem singletons.
+- Nomes de pacote curtos, em minúsculas, sem `_` e sem plural genérico: `ride`, `geo`, `httpapi`. Evite `utils`, `common`, `helpers`, `models`.
+- Evite repetição entre pacote e identificador: `ride.Service`, não `ride.RideService`.
+
+**Faça:**
+
+```go
+// internal/matching/app/service.go
+package app
+
+type DriverFinder interface {
+	Nearby(ctx context.Context, p geo.Point, radiusMeters float64) ([]Driver, error)
+}
+
+type Service struct {
+	drivers DriverFinder
+	log     *slog.Logger
+}
+
+func NewService(drivers DriverFinder, log *slog.Logger) *Service {
+	return &Service{drivers: drivers, log: log}
+}
+```
+
+**Não faça:**
+
+```go
+// internal/platform/interfaces/interfaces.go
+package interfaces
+
+// interface gigante, longe de quem a usa, imitando a implementação
+type IDriverService interface {
+	Create(...) error
+	Update(...) error
+	Delete(...) error
+	Nearby(...) ([]Driver, error)
+	UpdatePresence(...) error
+	// ... mais 10 métodos
+}
+
+var DB *pgxpool.Pool // global mutável
+
+func NewService() IDriverService { // retorna interface
+	return &driverService{db: DB}
+}
+```
+
+## 6. Concorrência
+
+- Toda goroutine precisa ter um dono e um jeito de terminar (cancelamento via `ctx` ou fechamento de channel). Goroutine sem fim é vazamento.
+- Use `sync.WaitGroup` para esperar goroutines e `sync.Mutex` para proteger estado compartilhado. Mantenha o mutex junto do dado que ele protege.
+- Quem envia fecha o channel. Nunca feche um channel do lado de quem recebe.
+- Prefira código síncrono. Só introduza concorrência quando houver ganho real e mensurável.
+- Sempre rode os testes com `-race`.
+- Desde o Go 1.22 a variável do `for` é nova a cada iteração; não faça `v := v`.
+
+**Faça:**
+
+```go
+func (s *Service) ETAs(ctx context.Context, origin geo.Point, drivers []Driver) ([]time.Duration, error) {
+	etas := make([]time.Duration, len(drivers))
+	errs := make([]error, len(drivers))
+
+	var wg sync.WaitGroup
+	for i, d := range drivers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			etas[i], errs[i] = s.routing.ETA(ctx, d.Position, origin)
+		}()
+	}
+	wg.Wait()
+
+	if err := errors.Join(errs...); err != nil {
+		return nil, fmt.Errorf("compute etas: %w", err)
+	}
+	return etas, nil
+}
+```
+
+**Não faça:**
+
+```go
+var results []time.Duration // compartilhado sem proteção: data race
+
+func ETAs(drivers []Driver, origin geo.Point) []time.Duration {
+	for _, d := range drivers {
+		d := d // desnecessário desde o Go 1.22
+		go func() {
+			eta, _ := routing.ETA(context.Background(), d.Position, origin) // ignora ctx e erro
+			results = append(results, eta)                                  // race
+		}()
+	}
+	time.Sleep(2 * time.Second) // "sincronização" por sleep
+	return results
+}
+```
+
+## 7. Servidor HTTP e ciclo de vida
+
+- Nunca use `http.ListenAndServe` direto: ele não tem timeouts. Crie um `http.Server` com `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout` e `IdleTimeout`.
+- Faça graceful shutdown com `signal.NotifyContext` e `srv.Shutdown`.
+- O `main` deve ser curto: carregar config, montar dependências e chamar `run(ctx)`, que retorna `error`.
+- Feche recursos (`pool.Close()`, `rdb.Close()`, `client.Close()`) com `defer` logo após criá-los com sucesso.
+
+**Faça:**
+
+```go
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if err := run(ctx, log); err != nil {
+		log.Error("service stopped", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, log *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	srv := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           newHandler(log),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.Info("http server listening", "addr", cfg.HTTPAddr)
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+		close(errCh)
+	}()
+
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("http server: %w", err)
+	case <-ctx.Done():
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return srv.Shutdown(shutdownCtx)
+}
+```
+
+**Não faça:**
+
+```go
+func main() {
+	db, _ := pgxpool.New(context.Background(), os.Getenv("DATABASE_URL")) // erro ignorado, nunca fechado
+	http.HandleFunc("/rides", handler(db))
+	log.Fatal(http.ListenAndServe(":8080", nil)) // sem timeouts, sem graceful shutdown, DefaultServeMux global
+}
+```
+
+## 8. Logging com `log/slog`
+
+- Use `log/slog` com handler JSON em produção. Receba o `*slog.Logger` por injeção; não use `slog.Default()` espalhado pelo código.
+- Logue com pares chave-valor estruturados, nunca concatenando strings.
+- Use as variantes `...Context` (`InfoContext`, `ErrorContext`) quando houver `ctx`.
+- Não logue segredos, tokens ou dados pessoais.
+
+**Faça:**
+
+```go
+s.log.InfoContext(ctx, "driver matched", "ride_id", ride.ID, "driver_id", d.ID, "eta_seconds", eta.Seconds())
+```
+
+**Não faça:**
+
+```go
+fmt.Printf("driver %s matched to ride %s\n", d.ID, ride.ID) // não estruturado, vai para stdout sem nível
+log.Println("matched: " + d.ID)                             // pacote log em vez de slog
+```
+
+## 9. Configuração
+
+- Leia configuração de variáveis de ambiente com `os.LookupEnv`/`os.Getenv` e converta com `strconv` e `time.ParseDuration`.
+- Centralize em uma struct `Config` carregada uma única vez no `main` e passada adiante. Falhe cedo quando um valor obrigatório estiver ausente ou for inválido.
+
+**Faça:**
+
+```go
+type Config struct {
+	HTTPAddr    string
+	DatabaseURL string
+	MatchRadius float64
+}
+
+func Load() (Config, error) {
+	cfg := Config{HTTPAddr: envOr("HTTP_ADDR", ":8080")}
+
+	var ok bool
+	if cfg.DatabaseURL, ok = os.LookupEnv("DATABASE_URL"); !ok {
+		return Config{}, errors.New("DATABASE_URL is required")
+	}
+
+	radius, err := strconv.ParseFloat(envOr("MATCH_RADIUS_METERS", "3000"), 64)
+	if err != nil {
+		return Config{}, fmt.Errorf("parse MATCH_RADIUS_METERS: %w", err)
+	}
+	cfg.MatchRadius = radius
+	return cfg, nil
+}
+
+func envOr(key, fallback string) string {
+	if v, ok := os.LookupEnv(key); ok {
+		return v
+	}
+	return fallback
+}
+```
+
+**Não faça:**
+
+```go
+import "github.com/spf13/viper" // dependência pesada para ler meia dúzia de variáveis
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	radius, _ := strconv.Atoi(os.Getenv("MATCH_RADIUS")) // lido a cada request, erro ignorado
+	// ...
+}
+```
+
+## 10. Testes
+
+### Testes são obrigatórios
+
+**Toda feature implementada deve vir acompanhada de testes que cubram seu funcionamento, na mesma entrega.** Código sem testes é considerado incompleto e não deve ser entregue. Isso vale para features novas, mudanças de comportamento e correções de bug.
+
+Regras:
+
+1. **Mesma entrega.** O código e os testes da feature são escritos juntos. Não deixe testes "para depois" e não encerre a tarefa sem eles.
+2. **Cobertura do comportamento, não só das linhas.** Para cada função ou endpoint exportado que a feature cria ou altera, cubra:
+   - o caminho feliz;
+   - cada erro que a função retorna ou trata (dependência falhando, recurso não encontrado, entrada inválida);
+   - casos de borda relevantes do domínio (lista vazia, raio zero, coordenadas nos limites, valores duplicados, estado inválido para a transição).
+3. **Correção de bug começa por um teste.** Escreva primeiro um teste que reproduz o bug e falha, depois corrija o código e confirme que o teste passa.
+4. **Cada camada no seu nível:**
+   - domínio e regras de negócio (`domain`, `app`, `ranking`, `geo`): testes de unidade com fakes, sem I/O;
+   - handlers HTTP (`httpapi`): `httptest.NewRecorder` verificando status, headers e corpo, inclusive das respostas de erro;
+   - consumers Kafka (`consumer`): chame o handler da mensagem diretamente com payloads válidos, inválidos e duplicados;
+   - repositórios (`postgres`, `redis`): testes de integração protegidos pela build tag `integration` (`//go:build integration`), executados com `go test -tags=integration ./...` contra a infraestrutura do `docker-compose.yml`.
+5. **Testes determinísticos.** Nada de `time.Sleep`, relógio real, ordem de map ou rede externa. Injete relógio (`func() time.Time`) e dependências por interface.
+6. **Testes rodam verdes.** Antes de entregar, rode `go test -race ./...` e confirme que tudo passa. Se não for possível rodar (por exemplo, falta de infraestrutura para os testes de integração), diga isso explicitamente ao usuário.
+7. **Não apague nem enfraqueça testes existentes** para fazer o código passar. Se um teste quebrou por mudança intencional de comportamento, atualize-o e explique o motivo.
+
+O arquivo de teste fica ao lado do código (`service.go` → `service_test.go`), no mesmo pacote. Use o pacote `_test` externo apenas quando quiser testar exclusivamente a API pública.
+
+**Faça** — feature entregue junto com testes cobrindo sucesso, erros e regra de negócio:
+
+```go
+// internal/ride/app/service.go
+func (s *Service) Accept(ctx context.Context, rideID, driverID string) error {
+	ride, err := s.rides.Get(ctx, rideID)
+	if err != nil {
+		return fmt.Errorf("get ride: %w", err)
+	}
+	if ride.Status != StatusRequested {
+		return ErrRideNotAvailable
+	}
+	if err := s.rides.Assign(ctx, rideID, driverID); err != nil {
+		return fmt.Errorf("assign driver: %w", err)
+	}
+	return nil
+}
+```
+
+```go
+// internal/ride/app/service_test.go
+type fakeRides struct {
+	ride      Ride
+	getErr    error
+	assignErr error
+	assigned  string
+}
+
+func (f *fakeRides) Get(context.Context, string) (Ride, error) { return f.ride, f.getErr }
+
+func (f *fakeRides) Assign(_ context.Context, _, driverID string) error {
+	if f.assignErr != nil {
+		return f.assignErr
+	}
+	f.assigned = driverID
+	return nil
+}
+
+func TestServiceAccept(t *testing.T) {
+	errDB := errors.New("db down")
+
+	tests := []struct {
+		name         string
+		rides        *fakeRides
+		wantErr      error
+		wantAssigned string
+	}{
+		{name: "assigns driver to requested ride", rides: &fakeRides{ride: Ride{Status: StatusRequested}}, wantAssigned: "driver-1"},
+		{name: "ride not found", rides: &fakeRides{getErr: ErrNotFound}, wantErr: ErrNotFound},
+		{name: "ride already accepted", rides: &fakeRides{ride: Ride{Status: StatusAccepted}}, wantErr: ErrRideNotAvailable},
+		{name: "assign fails", rides: &fakeRides{ride: Ride{Status: StatusRequested}, assignErr: errDB}, wantErr: errDB},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewService(tt.rides, slog.New(slog.DiscardHandler))
+
+			err := svc.Accept(t.Context(), "ride-1", "driver-1")
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Accept() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.rides.assigned != tt.wantAssigned {
+				t.Errorf("assigned driver = %q, want %q", tt.rides.assigned, tt.wantAssigned)
+			}
+		})
+	}
+}
+```
+
+**Não faça:**
+
+```go
+// feature entregue sem nenhum arquivo _test.go
+
+// ou um teste que só cobre o caminho feliz e não verifica nada de útil:
+func TestServiceAccept(t *testing.T) {
+	svc := NewService(&fakeRides{ride: Ride{Status: StatusRequested}}, slog.Default())
+	svc.Accept(context.Background(), "ride-1", "driver-1") // resultado ignorado, nenhuma asserção
+}
+
+// ou "consertar" um teste quebrado removendo a verificação:
+// if !errors.Is(err, ErrRideNotAvailable) { t.Fatal(...) }  <- comentado para passar
+```
+
+### Como escrever os testes
+
+- Use apenas o pacote `testing`. Prefira testes de tabela com `t.Run`.
+- Para HTTP, use `net/http/httptest` (`httptest.NewRecorder`, `httptest.NewServer`).
+- Para dependências, escreva fakes simples que implementam a interface consumida.
+- Use `t.Context()` (Go 1.24) em vez de `context.Background()` nos testes, `t.Helper()` em helpers e `t.Cleanup` para liberar recursos.
+- Mensagens de falha no formato `got X, want Y`.
+- Benchmarks com `for b.Loop()` (Go 1.24).
+
+**Faça:**
+
+```go
+func TestHaversine(t *testing.T) {
+	tests := []struct {
+		name   string
+		a, b   geo.Point
+		wantKm float64
+	}{
+		{name: "same point", a: geo.Point{Lat: -23.55, Lng: -46.63}, b: geo.Point{Lat: -23.55, Lng: -46.63}, wantKm: 0},
+		{name: "sao paulo to rio", a: geo.Point{Lat: -23.55, Lng: -46.63}, b: geo.Point{Lat: -22.91, Lng: -43.17}, wantKm: 360.7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := geo.Haversine(tt.a, tt.b)
+			if math.Abs(got-tt.wantKm) > 0.5 {
+				t.Errorf("Haversine() = %.1f km, want %.1f km", got, tt.wantKm)
+			}
+		})
+	}
+}
+
+type fakeDriverFinder struct {
+	drivers []Driver
+	err     error
+}
+
+func (f fakeDriverFinder) Nearby(context.Context, geo.Point, float64) ([]Driver, error) {
+	return f.drivers, f.err
+}
+```
+
+**Não faça:**
+
+```go
+import (
+	"github.com/stretchr/testify/assert"
+	"github.com/golang/mock/gomock"
+)
+
+func TestHaversine(t *testing.T) {
+	assert.Equal(t, 360.7, geo.Haversine(sp, rio)) // comparação exata de float, dependência externa
+}
+
+func TestService(t *testing.T) {
+	time.Sleep(time.Second) // testes dependentes de tempo real
+	// testes que dependem de Postgres/Redis rodando sem nenhum aviso ou build tag
+}
+```
+
+## 11. Estilo e nomes
+
+- Rode `gofmt` (ou `goimports`) sempre. Imports em grupos: stdlib, depois externos, depois do próprio módulo.
+- Nomes curtos para escopos curtos (`i`, `r`, `w`, `ctx`), descritivos para escopos longos.
+- Siglas com caixa consistente: `ID`, `URL`, `HTTP` (`driverID`, `parseURL`, `HTTPClient`).
+- Receivers curtos e consistentes (`s *Service`, nunca `this` ou `self`).
+- Comentários de documentação em todo identificador exportado, começando pelo nome dele: `// Service coordinates ...`.
+- Retorne cedo e mantenha o caminho feliz alinhado à esquerda; evite `else` depois de `return`.
+- Use o valor zero útil: prefira `var buf bytes.Buffer` a construtores desnecessários.
+- Prefira `for i := range n` (Go 1.22) a `for i := 0; i < n; i++` quando só precisar do índice.
+
+**Faça:**
+
+```go
+func (s *Service) Accept(ctx context.Context, rideID, driverID string) error {
+	ride, err := s.rides.Get(ctx, rideID)
+	if err != nil {
+		return fmt.Errorf("get ride: %w", err)
+	}
+	if ride.Status != StatusRequested {
+		return ErrRideNotAvailable
+	}
+	return s.rides.Assign(ctx, rideID, driverID)
+}
+```
+
+**Não faça:**
+
+```go
+func (this *RideService) AcceptRide(ctx context.Context, rideId string, driverId string) error {
+	ride, err := this.rides.Get(ctx, rideId)
+	if err == nil {
+		if ride.Status == StatusRequested {
+			return this.rides.Assign(ctx, rideId, driverId)
+		} else {
+			return ErrRideNotAvailable
+		}
+	} else {
+		return err
+	}
+}
+```
+
+## 12. Checklist antes de entregar código
+
+- [ ] Nenhuma dependência nova fora da lista permitida.
+- [ ] `gofmt`, `go vet ./...` e `go test -race ./...` passam.
+- [ ] Todo erro é verificado e envolvido com `%w` e contexto.
+- [ ] Funções com I/O recebem `ctx context.Context` como primeiro parâmetro.
+- [ ] Toda chamada de rede tem timeout e todo `resp.Body` é fechado.
+- [ ] Toda goroutine tem um caminho de término; nenhum estado compartilhado sem sincronização.
+- [ ] Interfaces pequenas, definidas no consumidor; construtores retornam structs.
+- [ ] Logs com `log/slog`, estruturados, sem segredos.
+- [ ] SQL sempre parametrizado (`$1`, `$2`), nunca concatenado.
+- [ ] A feature tem testes na mesma entrega, cobrindo caminho feliz, cada caso de erro e os casos de borda do domínio.
+- [ ] Correções de bug têm um teste que reproduz o bug.
+- [ ] Nenhum teste existente foi removido ou enfraquecido para o código passar.
+- [ ] `go test -race ./...` foi executado e passou (ou o usuário foi avisado do que não pôde ser executado).

@@ -1,0 +1,3 @@
+bin/
+data/maps/*
+!data/maps/.gitkeep
