@@ -1,0 +1,154 @@
+# Checklist
+
+Controle do que já foi feito. A definição de cada item está em [etapas.md](etapas.md).
+Marque `[x]` quando o item estiver no repositório e o teste da etapa passar.
+
+Estado em 7 de outubro de 2026: a base de infraestrutura está pronta. As etapas
+1 a 7 ainda não têm código (`cmd/` e `internal/` não existem).
+
+## Base do repositório
+
+- [x] Postgres 17 no compose, com schemas `ride` e `driver` e usuários separados (`deploy/postgres/init`)
+- [x] Redis só com TTL, sem RDB e sem AOF
+- [x] Kafka KRaft e os sete tópicos, com a retenção de cada um (`deploy/kafka/create-topics.sh`)
+- [x] `KAFKA_AUTO_CREATE_TOPICS_ENABLE` desligado
+- [x] Dockerfiles dos quatro serviços, apontando para `cmd/`
+- [x] `Makefile` com `build`, `test` e `docker-build`
+- [x] Módulo Go 1.24, com `pgx`, `go-redis` e `franz-go`
+- [ ] Tabelas SQL dos serviços (`ride` e `driver`)
+- [ ] nginx
+- [ ] Arquivo de grafo em `/data/maps`
+- [ ] Binários em `cmd/`
+
+## Etapa 1 — Contratos de runtime
+
+- [ ] `cmd/<serviço>/main.go` lê o ambiente, abre as dependências e desliga no sinal
+- [ ] `GET /healthz` responde 200 com o processo vivo
+- [ ] `GET /readyz` responde 503 até o que a doc daquele serviço exige
+- [ ] DDL versionado do dono do schema, rodando como o usuário daquele schema
+- [ ] Envelope de evento igual nos sete tópicos: `event_id`, `trace_id`, chave Kafka
+- [ ] Corpos de `rides.requested`, `rides.matched`, `rides.match-failed`, `rides.assigned`, `rides.released`, `drivers.presence` e `drivers.location`
+- [ ] Erro HTTP `application/problem+json` com `trace_id`
+- [ ] `make build` compila os quatro binários
+- [ ] Cada binário responde `/healthz`
+- [ ] Teste de mesa serializa e desserializa cada evento sem campo a mais nem a menos
+
+## Etapa 2 — Núcleo do algoritmo
+
+- [ ] `internal/geo`: Haversine em metros e rejeição de coordenada inválida
+- [ ] Fallback: distância em linha reta dividida por `HAVERSINE_SPEED_MPS`, com `engine: haversine-fallback`
+- [ ] `internal/kdtree`: vizinho mais próximo, imutável depois do boot (nós do grafo)
+- [ ] `internal/kdtree`: snapshot atômico mais delta para motoristas disponíveis
+- [ ] Leitura aplica o delta, filtra classe e raio, ordena por `straight_line_m` e corta em K
+- [ ] `internal/graph`: loader do arquivo, CSR, grafo reverso e KD-Tree dos nós
+- [ ] Dijkstra one-to-many no reverso, peso `duration_s`, parada em K origens ou `max_radius_m`
+- [ ] Pool fixo de buffers; pool esgotado é saturação; o buffer volta também se o contexto cancela
+- [ ] Teste: Haversine de um par conhecido e coordenada inválida
+- [ ] Teste: K dentro do raio, lista vazia, empate, snapshot trocado no meio da leitura, delta que corrige o snapshot
+- [ ] Teste: grafo mínimo (corredor, beco, dois caminhos); beco `reachable: false`; tempo ganha de metros
+- [ ] Teste: pool de tamanho 1 satura a segunda busca e devolve o buffer
+
+## Etapa 3 — routing-service
+
+- [ ] Boot lê o grafo, monta CSR, reverso e KD-Tree; `/readyz` fica 503 até o load
+- [ ] Arquivo do grafo fora da imagem, volume em `/data/maps`
+- [ ] `graph_version` é a primeira linha do arquivo
+- [ ] `POST /routes/eta:batch` com `estimates`, `engine`, `nodes_visited`, `graph_version`
+- [ ] `GET /nodes/snap`
+- [ ] Mais de 50 origens ou coordenada inválida: `422`
+- [ ] Origem inalcançável ou fora do raio: `200` com `reachable: false`
+- [ ] Pool cheio: `503` e `Retry-After`
+- [ ] Grafo ainda carregando: `503`
+- [ ] `engine` desta rota é sempre `dijkstra-one-to-many`
+- [ ] Uma instância nesta etapa
+- [ ] Teste `httptest` com o grafo mínimo: alcançável e beco, `422`, `503` de pool, `/readyz` antes e depois do load
+- [ ] Nenhuma chamada de saída
+
+## Etapa 4 — driver-service
+
+- [ ] Tabela `drivers` no schema `driver`
+- [ ] `internal_id` `uint32` denso, estável, índice do array de slots
+- [ ] Slot em memória: lat, lng, `seq`, heartbeat, disponibilidade, reserva. Posição sem coluna
+- [ ] Boot: Postgres, replay de 5 minutos de `drivers.location`, primeiro snapshot, então `/readyz` 200
+- [ ] Redis `driver:{id}:last`, TTL 60 s. O `nearby` não lê essa chave
+- [ ] `POST /drivers` com `Idempotency-Key`; a mesma chave devolve o cadastro original
+- [ ] `GET /drivers/{id}` sem trilha de GPS
+- [ ] `PATCH /drivers/{id}/status`; transição ilegal: `409`
+- [ ] `PUT /drivers/{id}/location` com `seq`; `seq` velho devolve `204` e não altera o slot
+- [ ] `GET /drivers/nearby` ordenado por `straight_line_m`; lista vazia é `200`
+- [ ] `k > 100`, `radius_m > 50000` ou coordenada inválida: `422`. Índice ausente: `503`
+- [ ] `nearby` exige `AVAILABLE`, heartbeat nos últimos 30 s e sem reserva
+- [ ] `rides.assigned` e `rides.released` atualizam o bit e o `UPDATE` condicional
+- [ ] `released` só libera se o `ride_id` for o da reserva atual
+- [ ] Varredor publica `lost` uma vez por reserva sem heartbeat
+- [ ] `204` sai depois da escrita local; o publish de `drivers.location` é assíncrono
+- [ ] Uma instância
+- [ ] Teste do slot: `seq` velho, heartbeat de 30 s, bit de reserva, `released` de outra corrida
+- [ ] Teste HTTP: cadastro, idempotência, `nearby` vazio, `nearby` ordenado, `503` antes do snapshot
+- [ ] Teste de integração: replay no boot reconstitui o slot
+
+## Etapa 5 — ride-service
+
+- [ ] Tabelas `rides`, `outbox` e `idempotency_keys` no schema `ride`
+- [ ] Índice único parcial em `assigned_driver_id` onde `status = 'DRIVER_ASSIGNED'`
+- [ ] Índice `(status, updated_at)` para status ainda não terminal
+- [ ] Corrida e outbox na mesma transação
+- [ ] Publisher com `FOR UPDATE SKIP LOCKED`; queda no meio reenvia o mesmo `event_id`
+- [ ] Publish de `rides.requested` passa a corrida de `REQUESTED` para `MATCHING`
+- [ ] Redis `idem:{key}` (24 h) e `driver:{id}:res` (30 s, `SETNX`)
+- [ ] Redis fora do ar: `idempotency_keys` e o índice único seguem valendo
+- [ ] Consumer group `ride-workers`, um consumidor
+- [ ] `POST /rides` responde `202` com `Location` e `poll_after_ms`
+- [ ] Mesma `Idempotency-Key` e mesmo corpo: `200`. Corpo diferente: `409`
+- [ ] `GET /rides/{id}`, `wait=3s`, `ETag` / `If-None-Match` → `304`
+- [ ] `GET /rides/{id}/events` em SSE
+- [ ] `POST /rides/{id}/cancel`, inclusive se já estava cancelada
+- [ ] `rides.matched` só no `attempt` atual; `attempt` menor recebe ack e segue
+- [ ] Reserva percorre o ranking; conflito passa ao próximo; ranking esgotado vai para `NO_DRIVER_AVAILABLE`
+- [ ] `rides.match-failed` no `attempt` atual vai para `NO_DRIVER_AVAILABLE`
+- [ ] `lost` publica `rides.released` e, se ainda há tentativa, um novo `rides.requested`
+- [ ] Segundo `lost` da mesma corrida não transiciona de novo
+- [ ] Cancelar com motorista atribuído publica `rides.released`
+- [ ] `version` sobe em toda transição
+- [ ] Uma instância. Nenhuma chamada REST
+- [ ] Teste de tabela da máquina: cada seta, `attempt` estourado, ranking esgotado, `matched` repetido, attempt velho, cancelamento repetido
+- [ ] Teste de integração: outbox na mesma transação, reenvio do `event_id`, duas atribuições do mesmo motorista
+
+## Etapa 6 — matching-service
+
+- [ ] Consumer group `matchers`, um consumidor. Ack só depois do publish
+- [ ] Redis `evt:{event_id}`, TTL 1 h. Redis fora do ar não para o serviço
+- [ ] Clientes de `nearby` e `eta:batch`: timeout 800 ms, 2 retries com jitter, circuit breaker
+- [ ] Breaker aberto cai no Haversine e não vira `match-failed`
+- [ ] Ignora `event_id` já visto
+- [ ] Pede até `MATCH_K` candidatos, teto 50, e remove `exclude_driver_ids` antes do ETA
+- [ ] Lista vazia depois da exclusão: `match-failed` com `no_candidate`
+- [ ] Uma chamada `eta:batch`; descarta `reachable: false`; ordena por `NearestETA`
+- [ ] Desempate: `distance_m` menor, depois `driver_id` crescente
+- [ ] Ninguém alcançável: `match-failed` com `none_reachable`
+- [ ] Routing fora: ranking com `engine: haversine-fallback`
+- [ ] Ranking publicado inteiro, com o `attempt` intacto
+- [ ] `/healthz` e `/readyz`; ready exige broker. Sem rota de produto
+- [ ] Uma instância, fora do nginx público
+- [ ] Teste com fakes: ranking por ETA, exclusão antes do ETA, fallback Haversine, `no_candidate`, `none_reachable`, `event_id` único, ack só se o publish funciona
+- [ ] Teste de integração: `POST /rides` até `DRIVER_ASSIGNED`, com o `trace_id` no evento e no log
+
+## Etapa 7 — Nginx, réplicas do routing e o compose fechado
+
+- [ ] nginx como único host do passageiro e do app do motorista
+- [ ] `ride-service`: 1 réplica, rotas `/rides`
+- [ ] `driver-service`: 1 réplica, rotas `/drivers`
+- [ ] `routing-service`: 2 réplicas, só na rede interna, `/routes` e `/nodes`
+- [ ] `matching-service`: 1 réplica, fora do nginx público
+- [ ] Réplica de routing com `/readyz` 503 sai do pool
+- [ ] `503` de pool de Dijkstra faz o matching tentar de novo na outra réplica
+- [ ] Compose sobe os quatro serviços, o nginx, o volume do grafo, Postgres, Redis e Kafka
+- [ ] `make docker-build` gera as quatro imagens
+- [ ] As duas réplicas de routing respondem a mesma `graph_version`
+- [ ] Script: cadastra motorista, `AVAILABLE`, localização
+- [ ] Script: `POST /rides` recebe `202` e `REQUESTED`
+- [ ] Script: `GET` com `wait=3s`, ou o SSE, chega em `DRIVER_ASSIGNED` com `eta_s`, `distance_m` e `eta_engine`
+- [ ] Script: a mesma `Idempotency-Key` e o mesmo corpo devolvem a mesma corrida
+- [ ] Script: parar o heartbeat gera `lost` e rematch, ou `NO_DRIVER_AVAILABLE` se o `attempt` estourou
+- [ ] Script: cancelar a corrida atribuída publica `rides.released` e o motorista volta ao `nearby`
+- [ ] Script: derrubar as réplicas de routing ainda atribui corrida, com `engine: haversine-fallback`

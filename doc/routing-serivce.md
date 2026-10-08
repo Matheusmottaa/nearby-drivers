@@ -4,11 +4,10 @@ Calcula o ETA dos candidatos até o ponto de embarque, em cima de um grafo de
 ruas carregado na memória. Não conhece corrida, motorista nem passageiro:
 recebe coordenadas e devolve distância e duração.
 
-Na v2 este serviço **não calcula rota** entre embarque e destino. O único
-chamador é o `matching-service`.
+O único chamador é o `matching-service`.
 
-Roda em **3 réplicas** atrás do nginx. É o serviço stateless da demonstração de
-load balancer.
+Roda em **2 réplicas** atrás do nginx, na rede interna. É o único serviço que
+sobe com mais de uma réplica: stateless, o load balancer reparte a busca.
 
 ## O que faz
 

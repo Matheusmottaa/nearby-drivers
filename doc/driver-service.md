@@ -3,11 +3,10 @@
 Dono do cadastro do motorista e do índice de posições. Responde quem está perto
 de um ponto. Não escolhe motorista e não conhece corrida.
 
-Roda em **2 réplicas** atrás do nginx. As duas atendem `GET /drivers/nearby`.
-Cada uma mantém o próprio índice em memória; o Kafka mantém as duas alinhadas.
+Roda em **1 instância** atrás do nginx. O índice de posições vive na memória
+desse processo. O Kafka guarda a janela recente para o replay no boot.
 
-Na v2 este é o serviço central: a pergunta "quem está perto do embarque?" é
-respondida aqui.
+A pergunta "quem está perto do embarque?" é respondida aqui.
 
 ## O que faz
 
@@ -27,10 +26,10 @@ Por isso o motorista **não tem coordenada no cadastro**.
 2. `PUT /drivers/{id}/location` valida o fix, grava o slot em memória se `seq`
    for maior que o atual, e publica `drivers.location`. O `204` sai depois da
    escrita local; o publish é assíncrono.
-3. **Todas** as réplicas consomem `drivers.location`, inclusive a que publicou,
-   e aplicam o fix no próprio array. Um snapshot de KD-Tree é reconstruído em
+3. O índice vive neste processo. Um snapshot de KD-Tree é reconstruído em
    background; a leitura usa o snapshot publicado mais um delta dos updates
-   recentes.
+   recentes. No boot, o replay de `drivers.location` reconstitui os slots
+   antes do `/readyz`.
 4. `GET /drivers/nearby` consulta esse índice e devolve os K motoristas
    disponíveis dentro do raio.
 5. Consome `rides.assigned` e `rides.released` para marcar o motorista como
@@ -40,7 +39,7 @@ Por isso o motorista **não tem coordenada no cadastro**.
 7. `PATCH /drivers/{id}/status` muda a declaração durável (`OFFLINE`,
    `AVAILABLE`, etc.).
 
-No boot, a réplica carrega os `internal_id` e o estado `ON_TRIP` do Postgres,
+No boot, o processo carrega os `internal_id` e o estado `ON_TRIP` do Postgres,
 faz replay dos últimos 5 minutos de `drivers.location` e só então marca
 `/readyz`.
 
@@ -114,7 +113,7 @@ construído é `503`, o mesmo sinal do `/readyz`.
 | --- | --- | --- |
 | `matching-service` | **REST** `GET /drivers/nearby` (este serviço responde) | O matching precisa dos candidatos agora para chamar o ETA em seguida |
 | `matching-service` | **REST** `GET /drivers/{id}` (este serviço responde) | Cadastro quando o nearby não trouxe o campo necessário |
-| Réplicas deste próprio serviço | **Kafka** `drivers.location` | A réplica que recebeu o `PUT` é a única com o ponto novo em memória. As outras só ficam corretas se lerem o evento |
+| este serviço | **Kafka** `drivers.location` | Publica o fix. No boot, relê a janela de 5 minutos e reconstitui o array |
 | `ride-service` | **Kafka** `rides.assigned` (consome) | Marcar o motorista como `ON_TRIP` |
 | `ride-service` | **Kafka** `rides.released` (consome) | Devolver o motorista aos disponíveis após cancelamento ou rematch |
 | `ride-service` | **Kafka** `drivers.presence` (produz) | `lost`: o motorista reservado parou de mandar heartbeat |
@@ -123,25 +122,20 @@ Não há REST de volta para o `ride-service`.
 
 ## Kafka — por que esta aplicação usa
 
-**As réplicas não compartilham o índice.** O nginx pode mandar o `PUT` para a
-réplica A e o `GET /drivers/nearby` para a réplica B. O padrão é fan-out: cada
-réplica tem o **próprio** consumer group (`driver-index-<instância>`), então
-cada uma recebe **todas** as mensagens.
+**O índice vive num processo só.** O `PUT` grava o slot local e publica
+`drivers.location`. A retenção de 5 minutos existe para o boot reconstruir a
+janela recente. Chave: `driver_id`. Consumer group único deste processo.
 
-**O boot precisa de uma janela para reconstruir.** Retenção de 5 minutos em
-`drivers.location`. Chave: `driver_id`.
-
-`rides.assigned` e `rides.released` também são fan-out, pelo mesmo motivo: o
-bit `ON_TRIP` vive no slot de cada réplica. Cada uma aplica o bit em memória e
-faz o `UPDATE` condicional no Postgres. As duas escrevem o mesmo valor, e a
-condição em `current_ride_id` torna a segunda escrita um no-op.
+`rides.assigned` e `rides.released` atualizam o bit `ON_TRIP` no slot e fazem
+o `UPDATE` condicional no Postgres. Entrega repetida encontra a condição em
+`current_ride_id` falsa e vira no-op.
 
 | Tópico | Papel aqui | Quem mais participa | Retenção |
 | --- | --- | --- | --- |
-| `drivers.location` | produz e consome (fan-out) | só este serviço | 5 minutos |
+| `drivers.location` | produz, e consome no replay do boot | só este serviço | 5 minutos |
 | `drivers.presence` | produz (`lost`) | `ride-service` consome | 1 hora |
-| `rides.assigned` | consome (fan-out) | `ride-service` produz | 7 dias |
-| `rides.released` | consome (fan-out) | `ride-service` produz | 7 dias |
+| `rides.assigned` | consome | `ride-service` produz | 7 dias |
+| `rides.released` | consome | `ride-service` produz | 7 dias |
 
 ## Cache — por que esta aplicação usa
 
@@ -187,9 +181,9 @@ libera o motorista de uma corrida nova.
 | `spatial.delta_size`, `spatial.delta_overflow` | gauge, contador | Delta crescendo além do rebuild |
 | `spatial.rebuild_duration_ms` | histograma | Gatilho de sharding quando o p99 passa de 200 ms |
 | `driver.location.stale_seq` | contador | `seq` velho descartado |
-| `kafka.consumer.lag` (`drivers.location`) | gauge | Réplica atrasada responde com posição velha |
+| `kafka.consumer.lag` (`drivers.location`) | gauge | Replay atrasado no boot deixa o índice para trás |
 | `driver.replay.duration_ms` | gauge | Tempo do boot até `/readyz` |
-| `driver.available` | gauge | Motoristas disponíveis no índice da réplica |
+| `driver.available` | gauge | Motoristas disponíveis no índice |
 
 Spans: handler HTTP, consulta à KD-Tree, publish e consumo de
 `drivers.location`.
@@ -203,6 +197,6 @@ Spans: handler HTTP, consulta à KD-Tree, publish e consumo de
 | `POST /drivers` com a mesma `Idempotency-Key` | Devolve o cadastro original, sem segundo `internal_id` |
 | `rides.assigned` entregue duas vezes | `ON_TRIP` com o mesmo `ride_id` já é o estado alvo |
 | `rides.released` de uma corrida que não é a atual | Ignorado |
-| `lost` detectado pelas duas réplicas | As duas publicam com o mesmo `ride_id`. O `ride-service` só sai de `DRIVER_ASSIGNED` uma vez |
+| `lost` publicado de novo para a mesma reserva | O slot marca o `lost` já emitido. O `ride-service` só sai de `DRIVER_ASSIGNED` uma vez |
 
 Log JSON com `service=driver-service`, `trace_id`, `driver_id` e `seq`.

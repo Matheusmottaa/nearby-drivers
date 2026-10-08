@@ -4,11 +4,10 @@ Dono do estado do pedido de corrida. É o único serviço que pode criar, atribu
 ou cancelar uma corrida. Matching escolhe; este serviço decide se a escolha vale
 e grava o resultado.
 
-Na v2 a corrida termina em `DRIVER_ASSIGNED`: o passageiro sabe qual motorista
-vem e em quanto tempo. Não há destino, rota nem viagem.
+A corrida termina em `DRIVER_ASSIGNED`: o passageiro sabe qual motorista vem e
+em quanto tempo.
 
-Roda em **2 réplicas** atrás do nginx. Qualquer uma atende, porque o estado está
-no PostgreSQL.
+Roda em **1 instância** atrás do nginx. O estado está no PostgreSQL.
 
 ## O que faz
 
@@ -39,7 +38,7 @@ stateDiagram-v2
     DRIVER_ASSIGNED --> CANCELLED: cancelamento
 ```
 
-`DRIVER_ASSIGNED` é o estado final de sucesso na v2. `CANCELLED` e
+`DRIVER_ASSIGNED` é o estado final de sucesso. `CANCELLED` e
 `NO_DRIVER_AVAILABLE` (depois do limite de tentativas) também não saem para
 outro estado. Atribuir de novo uma corrida que já tem motorista é rejeitado
 pelo agregado.
@@ -114,14 +113,15 @@ Consulta depois da atribuição:
 | `driver-service` | **Kafka** `rides.released` (produz) | O motorista volta aos disponíveis após cancelamento ou rematch |
 | `driver-service` | **Kafka** `drivers.presence` (consome) | `lost`, para rematch |
 
-Este serviço **não faz chamada REST** para nenhum outro. Na v2 a atribuição não
-depende do `routing-service`: o ETA prometido já vem no ranking.
+Este serviço **não faz chamada REST** para nenhum outro. A atribuição grava o
+ETA prometido que já vem no ranking.
 
 ## Kafka — por que esta aplicação usa
 
 O matching leva dezenas ou centenas de milissegundos e depende de outros dois
 serviços. O Kafka separa o aceite (validar, gravar, responder) da busca.
-Consumer group `ride-workers`: as duas réplicas competem.
+Consumer group `ride-workers`, com um consumidor. Uma reentrega é tratada pela
+máquina de estados.
 
 Estado e linha da `outbox` entram na mesma transação. Um processo em background
 publica o que ainda está com `published_at` nulo e só então marca a linha. Cair

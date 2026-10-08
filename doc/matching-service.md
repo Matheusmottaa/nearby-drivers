@@ -5,8 +5,9 @@ embarque e publica o resultado. Não grava corrida, não reserva motorista e nã
 calcula rota. É uma função: pedido mais o estado do mundo naquele instante →
 lista ordenada.
 
-Roda em **2 réplicas** no mesmo consumer group. Não fica atrás do nginx público:
-ninguém chama este serviço por HTTP de produto. Só `/healthz` e `/readyz`.
+Roda em **1 instância**, no consumer group `matchers`. Não fica atrás do nginx
+público: ninguém chama este serviço por HTTP de produto. Só `/healthz` e
+`/readyz`.
 
 ## O que faz
 
@@ -30,7 +31,7 @@ distância em linha reta dividida por uma velocidade média
 (`engine: haversine-fallback`). Falha de routing não pode virar
 `NO_DRIVER_AVAILABLE`.
 
-Na v2 o pedido não tem destino. O matching só olha o embarque.
+O matching olha o embarque.
 
 ## Contratos
 
@@ -95,8 +96,8 @@ porque `nearby` e `eta:batch` são leituras.
 
 - O `POST /rides` já respondeu. Este serviço pode levar o tempo que a busca
   levar.
-- O consumer group entrega cada corrida a uma das réplicas.
-- Se a réplica morrer durante o nearby ou o ETA, a mensagem volta.
+- O consumer group `matchers` tem um consumidor: cada corrida chega nele.
+- Se o processo morrer durante o nearby ou o ETA, a mensagem volta.
 - At-least-once é o contrato do broker; a duplicata é tratada abaixo.
 
 Chave `ride_id` nos tópicos de entrada e saída. Retenção de 7 dias.
