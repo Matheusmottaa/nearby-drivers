@@ -6,7 +6,8 @@ Marque `[x]` quando o item estiver no repositório e o teste da etapa passar.
 Estado em 9 de outubro de 2026: a base de infraestrutura está pronta, inclusive
 nginx, o grafo em `data/maps` (montado em `/data/maps`) e os quatro binários em
 `cmd/`. A etapa 1 fecha o boot, o erro HTTP e o envelope dos sete eventos. As
-etapas 2 a 7 ainda não têm regra de negócio. O DDL de `ride` e `driver` está em
+etapa 2 fecha o núcleo puro (`internal/geo`, `internal/kdtree` e a busca de
+`internal/graph`). As etapas 3 a 7 ainda não têm regra de negócio. O DDL de `ride` e `driver` está em
 `internal/ride/sql` e `internal/driver/sql` e o serviço dono aplica esse script,
 como usuário do schema, ao abrir o Postgres.
 
@@ -39,18 +40,18 @@ como usuário do schema, ao abrir o Postgres.
 
 ## Etapa 2 — Núcleo do algoritmo
 
-- [ ] `internal/geo`: Haversine em metros e rejeição de coordenada inválida
-- [ ] Fallback: distância em linha reta dividida por `HAVERSINE_SPEED_MPS`, com `engine: haversine-fallback`
-- [ ] `internal/kdtree`: vizinho mais próximo, imutável depois do boot (nós do grafo)
-- [ ] `internal/kdtree`: snapshot atômico mais delta para motoristas disponíveis
-- [ ] Leitura aplica o delta, filtra classe e raio, ordena por `straight_line_m` e corta em K
-- [ ] `internal/graph`: loader do arquivo, CSR, grafo reverso e KD-Tree dos nós
-- [ ] Dijkstra one-to-many no reverso, peso `duration_s`, parada em K origens ou `max_radius_m`
-- [ ] Pool fixo de buffers; pool esgotado é saturação; o buffer volta também se o contexto cancela
-- [ ] Teste: Haversine de um par conhecido e coordenada inválida
-- [ ] Teste: K dentro do raio, lista vazia, empate, snapshot trocado no meio da leitura, delta que corrige o snapshot
-- [ ] Teste: grafo mínimo (corredor, beco, dois caminhos); beco `reachable: false`; tempo ganha de metros
-- [ ] Teste: pool de tamanho 1 satura a segunda busca e devolve o buffer
+- [x] `internal/geo`: Haversine em metros e rejeição de coordenada inválida
+- [x] Fallback: distância em linha reta dividida por `HAVERSINE_SPEED_MPS`, com `engine: haversine-fallback`
+- [x] `internal/kdtree`: vizinho mais próximo, imutável depois do boot (nós do grafo)
+- [x] `internal/kdtree`: snapshot atômico mais delta para motoristas disponíveis
+- [x] Leitura aplica o delta, filtra classe e raio, ordena por `straight_line_m` e corta em K
+- [x] `internal/graph`: loader do arquivo, CSR, grafo reverso e KD-Tree dos nós
+- [x] Dijkstra one-to-many no reverso, peso `duration_s`, parada em K origens ou `max_radius_m`
+- [x] Pool fixo de buffers; pool esgotado é saturação; o buffer volta também se o contexto cancela
+- [x] Teste: Haversine de um par conhecido e coordenada inválida
+- [x] Teste: K dentro do raio, lista vazia, empate, snapshot trocado no meio da leitura, delta que corrige o snapshot
+- [x] Teste: grafo mínimo (corredor, beco, dois caminhos); beco `reachable: false`; tempo ganha de metros
+- [x] Teste: pool de tamanho 1 satura a segunda busca e devolve o buffer
 
 ## Etapa 3 — routing-service
 

@@ -5,10 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/Matheusmottaa/nearby-drivers/internal/geo"
 )
 
 // ErrInvalid means the file is not the graph text format.
@@ -144,8 +145,8 @@ func parseNode(line string) (Node, error) {
 	if err != nil {
 		return Node{}, fmt.Errorf("lng: %w", ErrInvalid)
 	}
-	if !validCoord(lat, lng) {
-		return Node{}, fmt.Errorf("coordinate: %w", ErrInvalid)
+	if err := (geo.Point{Lat: lat, Lng: lng}).Validate(); err != nil {
+		return Node{}, fmt.Errorf("coordinate: %w", errors.Join(ErrInvalid, err))
 	}
 	return Node{ID: id, Lat: lat, Lng: lng}, nil
 }
@@ -175,11 +176,4 @@ func parseEdge(line string) (Edge, error) {
 		return Edge{}, fmt.Errorf("negative weight: %w", ErrInvalid)
 	}
 	return Edge{From: from, To: to, DistanceM: distance, DurationS: duration}, nil
-}
-
-func validCoord(lat, lng float64) bool {
-	if math.IsNaN(lat) || math.IsInf(lat, 0) || math.IsNaN(lng) || math.IsInf(lng, 0) {
-		return false
-	}
-	return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
 }
