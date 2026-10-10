@@ -34,6 +34,15 @@ func (p *Pool) Size() int {
 	return cap(p.buffers)
 }
 
+// Take holds one buffer until release is called, as a running search would.
+func (p *Pool) Take() (release func(), err error) {
+	b, err := p.acquire()
+	if err != nil {
+		return nil, err
+	}
+	return func() { p.release(b) }, nil
+}
+
 func (p *Pool) acquire() (*buffer, error) {
 	select {
 	case b := <-p.buffers:

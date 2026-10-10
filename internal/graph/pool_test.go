@@ -47,6 +47,21 @@ func TestPoolOfOneSaturates(t *testing.T) {
 	}
 }
 
+func TestPoolTakeHoldsUntilRelease(t *testing.T) {
+	pool := NewPool(1, 1)
+	release, err := pool.Take()
+	if err != nil {
+		t.Fatalf("Take() = %v", err)
+	}
+	if _, err := pool.Take(); !errors.Is(err, ErrSaturated) {
+		t.Fatalf("second Take() = %v, want ErrSaturated", err)
+	}
+	release()
+	if pool.InUse() != 0 {
+		t.Fatalf("InUse() = %d after release, want 0", pool.InUse())
+	}
+}
+
 func TestPoolAcquireNeverBlocks(t *testing.T) {
 	pool := NewPool(0, 1)
 	if _, err := pool.acquire(); !errors.Is(err, ErrSaturated) {

@@ -20,19 +20,23 @@ import (
 
 // Gate is the readiness flag read by GET /readyz.
 type Gate struct {
-	ready   atomic.Bool
-	handler http.Handler
+	ready atomic.Bool
+	mux   *http.ServeMux
 }
 
 // NewGate serves /healthz and /readyz. Readiness starts closed.
 func NewGate() *Gate {
-	g := &Gate{}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", g.healthz)
-	mux.HandleFunc("/readyz", g.readyz)
-	mux.HandleFunc("/", notFound)
-	g.handler = mux
+	g := &Gate{mux: http.NewServeMux()}
+	g.mux.HandleFunc("/healthz", g.healthz)
+	g.mux.HandleFunc("/readyz", g.readyz)
+	g.mux.HandleFunc("/", notFound)
 	return g
+}
+
+// Handle registers a service route next to the probes. It panics, like
+// http.ServeMux, if pattern is already registered.
+func (g *Gate) Handle(pattern string, handler http.Handler) {
+	g.mux.Handle(pattern, handler)
 }
 
 // SetReady opens or closes readiness. Liveness does not change.
@@ -42,7 +46,7 @@ func (g *Gate) SetReady(ready bool) {
 
 // Handler is the HTTP handler of the gate.
 func (g *Gate) Handler() http.Handler {
-	return g.handler
+	return g.mux
 }
 
 func (g *Gate) healthz(w http.ResponseWriter, r *http.Request) {

@@ -7,7 +7,8 @@ Estado em 9 de outubro de 2026: a base de infraestrutura está pronta, inclusive
 nginx, o grafo em `data/maps` (montado em `/data/maps`) e os quatro binários em
 `cmd/`. A etapa 1 fecha o boot, o erro HTTP e o envelope dos sete eventos. As
 etapa 2 fecha o núcleo puro (`internal/geo`, `internal/kdtree` e a busca de
-`internal/graph`). As etapas 3 a 7 ainda não têm regra de negócio. O DDL de `ride` e `driver` está em
+`internal/graph`). A etapa 3 expõe o ETA e o snap no `routing-service`. As
+etapas 4 a 7 ainda não têm regra de negócio. O DDL de `ride` e `driver` está em
 `internal/ride/sql` e `internal/driver/sql` e o serviço dono aplica esse script,
 como usuário do schema, ao abrir o Postgres.
 
@@ -55,19 +56,19 @@ como usuário do schema, ao abrir o Postgres.
 
 ## Etapa 3 — routing-service
 
-- [ ] Boot lê o grafo, monta CSR, reverso e KD-Tree; `/readyz` fica 503 até o load
-- [ ] Arquivo do grafo fora da imagem, volume em `/data/maps`
-- [ ] `graph_version` é a primeira linha do arquivo
-- [ ] `POST /routes/eta:batch` com `estimates`, `engine`, `nodes_visited`, `graph_version`
-- [ ] `GET /nodes/snap`
-- [ ] Mais de 50 origens ou coordenada inválida: `422`
-- [ ] Origem inalcançável ou fora do raio: `200` com `reachable: false`
-- [ ] Pool cheio: `503` e `Retry-After`
-- [ ] Grafo ainda carregando: `503`
-- [ ] `engine` desta rota é sempre `dijkstra-one-to-many`
-- [ ] Uma instância nesta etapa
-- [ ] Teste `httptest` com o grafo mínimo: alcançável e beco, `422`, `503` de pool, `/readyz` antes e depois do load
-- [ ] Nenhuma chamada de saída
+- [x] Boot lê o grafo, monta CSR, reverso e KD-Tree; `/readyz` fica 503 até o load
+- [x] Arquivo do grafo fora da imagem, volume em `/data/maps`
+- [x] `graph_version` é a primeira linha do arquivo
+- [x] `POST /routes/eta:batch` com `estimates`, `engine`, `nodes_visited`, `graph_version`
+- [x] `GET /nodes/snap`
+- [x] Mais de 50 origens ou coordenada inválida: `422`
+- [x] Origem inalcançável ou fora do raio: `200` com `reachable: false`
+- [x] Pool cheio: `503` e `Retry-After`
+- [x] Grafo ainda carregando: `503`
+- [x] `engine` desta rota é sempre `dijkstra-one-to-many`
+- [x] Uma instância nesta etapa
+- [x] Teste `httptest` com o grafo mínimo: alcançável e beco, `422`, `503` de pool, `/readyz` antes e depois do load
+- [x] Nenhuma chamada de saída
 
 ## Etapa 4 — driver-service
 
