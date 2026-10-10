@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,11 +27,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Postgres, Redis e Kafka sobem aqui. /readyz continua 503 até o índice
-	// espacial da etapa 4.
+	// Uma instância: o índice vive neste processo. /readyz abre depois do
+	// replay de drivers.location e do primeiro snapshot.
 	gate := httpsrv.NewGate()
+	srv := newServer(log)
+	srv.register(gate)
 	go boot.Supervise(ctx, log, gate, false, time.Second, func(ctx context.Context) (func(), error) {
-		return open(ctx, cfg)
+		return open(ctx, log, cfg, gate, srv)
 	})
 
 	log.Info("starting", "http_addr", cfg.HTTPAddr, "redis_url", cfg.RedisURL, "kafka_brokers", cfg.KafkaBrokers)
@@ -40,17 +43,36 @@ func main() {
 	}
 }
 
-func open(ctx context.Context, cfg config) (func(), error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	stores, err := depend.OpenStores(ctx, cfg.DatabaseURL, cfg.RedisURL, cfg.KafkaBrokers)
+func open(ctx context.Context, log *slog.Logger, cfg config, gate *httpsrv.Gate, srv *server) (func(), error) {
+	connCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	stores, err := depend.OpenStores(connCtx, cfg.DatabaseURL, cfg.RedisURL, cfg.KafkaBrokers)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
-	if err := driver.ApplyDDL(ctx, stores.Postgres); err != nil {
+	if err := driver.ApplyDDL(connCtx, stores.Postgres); err != nil {
+		cancel()
 		stores.Close()
 		return nil, err
 	}
-	return stores.Close, nil
+	cancel()
+
+	svc := driver.New(log, driver.NewPostgres(stores.Postgres), driver.NewRedis(stores.Redis), driver.NewKafka(stores.Kafka, cfg.KafkaBrokers))
+	bootCtx, bootCancel := context.WithTimeout(ctx, 30*time.Second)
+	err = svc.Boot(bootCtx)
+	bootCancel()
+	if err != nil {
+		stores.Close()
+		return nil, err
+	}
+
+	loopCtx, loopCancel := context.WithCancel(ctx)
+	go svc.Loop(loopCtx)
+	srv.bind(svc)
+	gate.SetReady(true)
+	return func() {
+		loopCancel()
+		svc.Wait()
+		stores.Close()
+	}, nil
 }

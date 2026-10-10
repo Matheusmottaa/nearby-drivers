@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/twmb/franz-go v1.20.7
+	github.com/twmb/franz-go/pkg/kmsg v1.12.0
 )
 
 require (
@@ -15,7 +16,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/pierrec/lz4/v4 v4.1.25 // indirect
-	github.com/twmb/franz-go/pkg/kmsg v1.12.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect

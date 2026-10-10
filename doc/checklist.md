@@ -3,14 +3,15 @@
 Controle do que já foi feito. A definição de cada item está em [etapas.md](etapas.md).
 Marque `[x]` quando o item estiver no repositório e o teste da etapa passar.
 
-Estado em 9 de outubro de 2026: a base de infraestrutura está pronta, inclusive
+Estado em 10 de outubro de 2026: a base de infraestrutura está pronta, inclusive
 nginx, o grafo em `data/maps` (montado em `/data/maps`) e os quatro binários em
-`cmd/`. A etapa 1 fecha o boot, o erro HTTP e o envelope dos sete eventos. As
+`cmd/`. A etapa 1 fecha o boot, o erro HTTP e o envelope dos sete eventos. A
 etapa 2 fecha o núcleo puro (`internal/geo`, `internal/kdtree` e a busca de
-`internal/graph`). A etapa 3 expõe o ETA e o snap no `routing-service`. As
-etapas 4 a 7 ainda não têm regra de negócio. O DDL de `ride` e `driver` está em
-`internal/ride/sql` e `internal/driver/sql` e o serviço dono aplica esse script,
-como usuário do schema, ao abrir o Postgres.
+`internal/graph`). A etapa 3 expõe o ETA e o snap no `routing-service`. A etapa
+4 fecha o cadastro e o índice do `driver-service`. As etapas 5 a 7 ainda não
+têm regra de negócio. O DDL de `ride` e `driver` está em `internal/ride/sql` e
+`internal/driver/sql` e o serviço dono aplica esse script, como usuário do
+schema, ao abrir o Postgres.
 
 ## Base do repositório
 
@@ -72,26 +73,26 @@ como usuário do schema, ao abrir o Postgres.
 
 ## Etapa 4 — driver-service
 
-- [ ] Tabela `drivers` no schema `driver`
-- [ ] `internal_id` `uint32` denso, estável, índice do array de slots
-- [ ] Slot em memória: lat, lng, `seq`, heartbeat, disponibilidade, reserva. Posição sem coluna
-- [ ] Boot: Postgres, replay de 5 minutos de `drivers.location`, primeiro snapshot, então `/readyz` 200
-- [ ] Redis `driver:{id}:last`, TTL 60 s. O `nearby` não lê essa chave
-- [ ] `POST /drivers` com `Idempotency-Key`; a mesma chave devolve o cadastro original
-- [ ] `GET /drivers/{id}` sem trilha de GPS
-- [ ] `PATCH /drivers/{id}/status`; transição ilegal: `409`
-- [ ] `PUT /drivers/{id}/location` com `seq`; `seq` velho devolve `204` e não altera o slot
-- [ ] `GET /drivers/nearby` ordenado por `straight_line_m`; lista vazia é `200`
-- [ ] `k > 100`, `radius_m > 50000` ou coordenada inválida: `422`. Índice ausente: `503`
-- [ ] `nearby` exige `AVAILABLE`, heartbeat nos últimos 30 s e sem reserva
-- [ ] `rides.assigned` e `rides.released` atualizam o bit e o `UPDATE` condicional
-- [ ] `released` só libera se o `ride_id` for o da reserva atual
-- [ ] Varredor publica `lost` uma vez por reserva sem heartbeat
-- [ ] `204` sai depois da escrita local; o publish de `drivers.location` é assíncrono
-- [ ] Uma instância
-- [ ] Teste do slot: `seq` velho, heartbeat de 30 s, bit de reserva, `released` de outra corrida
-- [ ] Teste HTTP: cadastro, idempotência, `nearby` vazio, `nearby` ordenado, `503` antes do snapshot
-- [ ] Teste de integração: replay no boot reconstitui o slot
+- [x] Tabela `drivers` no schema `driver`
+- [x] `internal_id` `uint32` denso, estável, índice do array de slots
+- [x] Slot em memória: lat, lng, `seq`, heartbeat, disponibilidade, reserva. Posição sem coluna
+- [x] Boot: Postgres, replay de 5 minutos de `drivers.location`, primeiro snapshot, então `/readyz` 200
+- [x] Redis `driver:{id}:last`, TTL 60 s. O `nearby` não lê essa chave
+- [x] `POST /drivers` com `Idempotency-Key`; a mesma chave devolve o cadastro original
+- [x] `GET /drivers/{id}` sem trilha de GPS
+- [x] `PATCH /drivers/{id}/status`; transição ilegal: `409`
+- [x] `PUT /drivers/{id}/location` com `seq`; `seq` velho devolve `204` e não altera o slot
+- [x] `GET /drivers/nearby` ordenado por `straight_line_m`; lista vazia é `200`
+- [x] `k > 100`, `radius_m > 50000` ou coordenada inválida: `422`. Índice ausente: `503`
+- [x] `nearby` exige `AVAILABLE`, heartbeat nos últimos 30 s e sem reserva
+- [x] `rides.assigned` e `rides.released` atualizam o bit e o `UPDATE` condicional
+- [x] `released` só libera se o `ride_id` for o da reserva atual
+- [x] Varredor publica `lost` uma vez por reserva sem heartbeat
+- [x] `204` sai depois da escrita local; o publish de `drivers.location` é assíncrono
+- [x] Uma instância
+- [x] Teste do slot: `seq` velho, heartbeat de 30 s, bit de reserva, `released` de outra corrida
+- [x] Teste HTTP: cadastro, idempotência, `nearby` vazio, `nearby` ordenado, `503` antes do snapshot
+- [x] Teste de integração: replay no boot reconstitui o slot
 
 ## Etapa 5 — ride-service
 
