@@ -3,8 +3,11 @@
 Controle do que já foi feito. A definição de cada item está em [etapas.md](etapas.md).
 Marque `[x]` quando o item estiver no repositório e o teste da etapa passar.
 
-Estado em 7 de outubro de 2026: a base de infraestrutura está pronta. As etapas
-1 a 7 ainda não têm código (`cmd/` e `internal/` não existem).
+Estado em 9 de outubro de 2026: a base de infraestrutura está pronta, inclusive
+nginx, o grafo em `data/maps` (montado em `/data/maps`) e os quatro binários em
+`cmd/`. As etapas 1 a 7 ainda não têm regra de negócio. O DDL de `ride` e
+`driver` está em `internal/ride/sql` e `internal/driver/sql`; quem aplica, como
+usuário do schema, é o serviço dono, na etapa 1.
 
 ## Base do repositório
 
@@ -15,10 +18,10 @@ Estado em 7 de outubro de 2026: a base de infraestrutura está pronta. As etapas
 - [x] Dockerfiles dos quatro serviços, apontando para `cmd/`
 - [x] `Makefile` com `build`, `test` e `docker-build`
 - [x] Módulo Go 1.24, com `pgx`, `go-redis` e `franz-go`
-- [ ] Tabelas SQL dos serviços (`ride` e `driver`)
-- [ ] nginx
-- [ ] Arquivo de grafo em `/data/maps`
-- [ ] Binários em `cmd/`
+- [x] Tabelas SQL dos serviços (`ride` e `driver`)
+- [x] nginx
+- [x] Arquivo de grafo em `/data/maps`
+- [x] Binários em `cmd/`
 
 ## Etapa 1 — Contratos de runtime
 

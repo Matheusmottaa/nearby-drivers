@@ -1,1 +1,5 @@
 deploy/kafka/create-topics.sh text eol=lf
+deploy/nginx/*.sh text eol=lf
+deploy/nginx/*.conf text eol=lf
+deploy/nginx/upstreams/*.conf text eol=lf
+data/maps/graph.txt text eol=lf

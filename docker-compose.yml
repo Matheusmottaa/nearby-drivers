@@ -4,10 +4,26 @@
 #             postgres://driver:driver@localhost:5432/nearby?sslmode=disable
 #   redis     redis://localhost:6379
 #   kafka     localhost:9092
+#   nginx     http://localhost:8080          /rides e /drivers
+#             http://nginx:8081              /routes e /nodes, só na rede do compose
 #
 # Dentro da rede do compose o broker interno é kafka:19092.
 
 name: nearby-drivers
+
+x-routing: &routing
+  image: nearby-drivers/routing-service:latest
+  environment:
+    HTTP_ADDR: ":8080"
+    GRAPH_PATH: /data/maps/graph.txt
+  volumes:
+    - ./data/maps:/data/maps:ro
+  healthcheck:
+    test: ["CMD", "/routing-service", "-healthcheck"]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+    start_period: 10s
 
 services:
   postgres:
@@ -81,6 +97,91 @@ services:
       - ./deploy/kafka/create-topics.sh:/create-topics.sh:ro
     entrypoint: ["/bin/bash", "/create-topics.sh"]
     restart: "no"
+
+  ride-service:
+    image: nearby-drivers/ride-service:latest
+    build:
+      context: .
+      dockerfile: deploy/ride-service/Dockerfile
+    environment:
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://ride:ride@postgres:5432/nearby?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:19092
+    healthcheck:
+      test: ["CMD", "/ride-service", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  driver-service:
+    image: nearby-drivers/driver-service:latest
+    build:
+      context: .
+      dockerfile: deploy/driver-service/Dockerfile
+    environment:
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://driver:driver@postgres:5432/nearby?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:19092
+    healthcheck:
+      test: ["CMD", "/driver-service", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  matching-service:
+    image: nearby-drivers/matching-service:latest
+    build:
+      context: .
+      dockerfile: deploy/matching-service/Dockerfile
+    environment:
+      HTTP_ADDR: ":8080"
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:19092
+      DRIVER_URL: http://nginx:8080
+      ROUTING_URL: http://nginx:8081
+    healthcheck:
+      test: ["CMD", "/matching-service", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  routing-1:
+    <<: *routing
+    build:
+      context: .
+      dockerfile: deploy/routing-service/Dockerfile
+
+  routing-2:
+    <<: *routing
+    pull_policy: never
+
+  nginx:
+    image: nearby-drivers/nginx:latest
+    build:
+      context: ./deploy/nginx
+    init: true
+    ports:
+      - "8080:8080"
+    depends_on:
+      ride-service:
+        condition: service_healthy
+      driver-service:
+        condition: service_healthy
+      routing-1:
+        condition: service_healthy
+      routing-2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
 volumes:
   postgres_data:
