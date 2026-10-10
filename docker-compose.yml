@@ -108,6 +108,13 @@ services:
       DATABASE_URL: postgres://ride:ride@postgres:5432/nearby?sslmode=disable
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:19092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/ride-service", "-healthcheck"]
       interval: 5s
@@ -125,8 +132,17 @@ services:
       DATABASE_URL: postgres://driver:driver@postgres:5432/nearby?sslmode=disable
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:19092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    # /readyz fica 503 até o índice espacial (etapa 4). -live só diz que o
+    # processo escuta; o nginx tira o upstream enquanto /readyz não for 200.
     healthcheck:
-      test: ["CMD", "/driver-service", "-healthcheck"]
+      test: ["CMD", "/driver-service", "-live"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -143,6 +159,11 @@ services:
       KAFKA_BROKERS: kafka:19092
       DRIVER_URL: http://nginx:8080
       ROUTING_URL: http://nginx:8081
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/matching-service", "-healthcheck"]
       interval: 5s

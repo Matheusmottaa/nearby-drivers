@@ -15,12 +15,11 @@ import (
 func main() {
 	log := httpsrv.NewLogger("routing-service")
 	cfg := loadConfig()
-	if len(os.Args) > 1 {
-		if len(os.Args) != 2 || os.Args[1] != "-healthcheck" {
+	if code, probe := httpsrv.ProbeCode(os.Args, cfg.HTTPAddr); probe {
+		if code == 2 {
 			log.Error("arguments", "args", os.Args[1:])
-			os.Exit(2)
 		}
-		os.Exit(httpsrv.ReadyStatus(cfg.HTTPAddr))
+		os.Exit(code)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

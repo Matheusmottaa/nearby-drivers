@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/Matheusmottaa/nearby-drivers/internal/problem"
 )
 
 // Gate is the readiness flag read by GET /readyz.
@@ -26,8 +28,9 @@ type Gate struct {
 func NewGate() *Gate {
 	g := &Gate{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", g.healthz)
-	mux.HandleFunc("GET /readyz", g.readyz)
+	mux.HandleFunc("/healthz", g.healthz)
+	mux.HandleFunc("/readyz", g.readyz)
+	mux.HandleFunc("/", notFound)
 	g.handler = mux
 	return g
 }
@@ -42,16 +45,28 @@ func (g *Gate) Handler() http.Handler {
 	return g.handler
 }
 
-func (g *Gate) healthz(w http.ResponseWriter, _ *http.Request) {
+func (g *Gate) healthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		problem.Write(w, http.StatusMethodNotAllowed, "method not allowed", "use GET", problem.TraceID(r))
+		return
+	}
 	writeText(w, http.StatusOK, "ok\n")
 }
 
-func (g *Gate) readyz(w http.ResponseWriter, _ *http.Request) {
+func (g *Gate) readyz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		problem.Write(w, http.StatusMethodNotAllowed, "method not allowed", "use GET", problem.TraceID(r))
+		return
+	}
 	if !g.ready.Load() {
 		writeText(w, http.StatusServiceUnavailable, "not ready\n")
 		return
 	}
 	writeText(w, http.StatusOK, "ok\n")
+}
+
+func notFound(w http.ResponseWriter, r *http.Request) {
+	problem.Write(w, http.StatusNotFound, "not found", "no such route", problem.TraceID(r))
 }
 
 func writeText(w http.ResponseWriter, status int, body string) {
@@ -105,10 +120,38 @@ func Run(ctx context.Context, log *slog.Logger, addr string, handler http.Handle
 
 // ReadyStatus probes GET /readyz on addr. It returns 0 when the status is 200.
 func ReadyStatus(addr string) int {
+	return probeStatus(addr, "/readyz")
+}
+
+// LiveStatus probes GET /healthz on addr. It returns 0 when the status is 200.
+func LiveStatus(addr string) int {
+	return probeStatus(addr, "/healthz")
+}
+
+// ProbeCode reports the process status for -healthcheck and -live.
+// ok is false when args do not select a probe, which is a normal start.
+func ProbeCode(args []string, addr string) (code int, ok bool) {
+	if len(args) <= 1 {
+		return 0, false
+	}
+	if len(args) != 2 {
+		return 2, true
+	}
+	switch args[1] {
+	case "-healthcheck":
+		return ReadyStatus(addr), true
+	case "-live":
+		return LiveStatus(addr), true
+	default:
+		return 2, true
+	}
+}
+
+func probeStatus(addr, path string) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+loopback(addr)+"/readyz", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+loopback(addr)+path, nil)
 	if err != nil {
 		return 1
 	}

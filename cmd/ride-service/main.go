@@ -5,32 +5,51 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/Matheusmottaa/nearby-drivers/internal/boot"
+	"github.com/Matheusmottaa/nearby-drivers/internal/depend"
 	"github.com/Matheusmottaa/nearby-drivers/internal/httpsrv"
+	"github.com/Matheusmottaa/nearby-drivers/internal/ride"
 )
 
 func main() {
 	log := httpsrv.NewLogger("ride-service")
 	cfg := loadConfig()
-	if len(os.Args) > 1 {
-		if len(os.Args) != 2 || os.Args[1] != "-healthcheck" {
+	if code, probe := httpsrv.ProbeCode(os.Args, cfg.HTTPAddr); probe {
+		if code == 2 {
 			log.Error("arguments", "args", os.Args[1:])
-			os.Exit(2)
 		}
-		os.Exit(httpsrv.ReadyStatus(cfg.HTTPAddr))
+		os.Exit(code)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Banco, Redis e Kafka entram na etapa 1. Até lá o processo está pronto
-	// quando está escutando.
+	// /readyz abre quando o banco responde e o DDL do schema ride foi aplicado.
 	gate := httpsrv.NewGate()
-	gate.SetReady(true)
+	go boot.Supervise(ctx, log, gate, true, time.Second, func(ctx context.Context) (func(), error) {
+		return open(ctx, cfg)
+	})
 
 	log.Info("starting", "http_addr", cfg.HTTPAddr, "redis_url", cfg.RedisURL, "kafka_brokers", cfg.KafkaBrokers)
 	if err := httpsrv.Run(ctx, log, cfg.HTTPAddr, gate.Handler()); err != nil {
 		log.Error("stopped", "err", err)
 		os.Exit(1)
 	}
+}
+
+func open(ctx context.Context, cfg config) (func(), error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	stores, err := depend.OpenStores(ctx, cfg.DatabaseURL, cfg.RedisURL, cfg.KafkaBrokers)
+	if err != nil {
+		return nil, err
+	}
+	if err := ride.ApplyDDL(ctx, stores.Postgres); err != nil {
+		stores.Close()
+		return nil, err
+	}
+	return stores.Close, nil
 }

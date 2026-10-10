@@ -5,9 +5,10 @@ Marque `[x]` quando o item estiver no repositório e o teste da etapa passar.
 
 Estado em 9 de outubro de 2026: a base de infraestrutura está pronta, inclusive
 nginx, o grafo em `data/maps` (montado em `/data/maps`) e os quatro binários em
-`cmd/`. As etapas 1 a 7 ainda não têm regra de negócio. O DDL de `ride` e
-`driver` está em `internal/ride/sql` e `internal/driver/sql`; quem aplica, como
-usuário do schema, é o serviço dono, na etapa 1.
+`cmd/`. A etapa 1 fecha o boot, o erro HTTP e o envelope dos sete eventos. As
+etapas 2 a 7 ainda não têm regra de negócio. O DDL de `ride` e `driver` está em
+`internal/ride/sql` e `internal/driver/sql` e o serviço dono aplica esse script,
+como usuário do schema, ao abrir o Postgres.
 
 ## Base do repositório
 
@@ -25,16 +26,16 @@ usuário do schema, é o serviço dono, na etapa 1.
 
 ## Etapa 1 — Contratos de runtime
 
-- [ ] `cmd/<serviço>/main.go` lê o ambiente, abre as dependências e desliga no sinal
-- [ ] `GET /healthz` responde 200 com o processo vivo
-- [ ] `GET /readyz` responde 503 até o que a doc daquele serviço exige
-- [ ] DDL versionado do dono do schema, rodando como o usuário daquele schema
-- [ ] Envelope de evento igual nos sete tópicos: `event_id`, `trace_id`, chave Kafka
-- [ ] Corpos de `rides.requested`, `rides.matched`, `rides.match-failed`, `rides.assigned`, `rides.released`, `drivers.presence` e `drivers.location`
-- [ ] Erro HTTP `application/problem+json` com `trace_id`
-- [ ] `make build` compila os quatro binários
-- [ ] Cada binário responde `/healthz`
-- [ ] Teste de mesa serializa e desserializa cada evento sem campo a mais nem a menos
+- [x] `cmd/<serviço>/main.go` lê o ambiente, abre as dependências e desliga no sinal
+- [x] `GET /healthz` responde 200 com o processo vivo
+- [x] `GET /readyz` responde 503 até o que a doc daquele serviço exige
+- [x] DDL versionado do dono do schema, rodando como o usuário daquele schema
+- [x] Envelope de evento igual nos sete tópicos: `event_id`, `trace_id`, chave Kafka
+- [x] Corpos de `rides.requested`, `rides.matched`, `rides.match-failed`, `rides.assigned`, `rides.released`, `drivers.presence` e `drivers.location`
+- [x] Erro HTTP `application/problem+json` com `trace_id`
+- [x] `make build` compila os quatro binários
+- [x] Cada binário responde `/healthz`
+- [x] Teste de mesa serializa e desserializa cada evento sem campo a mais nem a menos
 
 ## Etapa 2 — Núcleo do algoritmo
 
