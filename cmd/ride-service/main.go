@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,30 +27,42 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// /readyz abre quando o banco responde e o DDL do schema ride foi aplicado.
+	// Uma instância. /readyz abre quando o banco responde e o DDL do schema ride foi aplicado.
 	gate := httpsrv.NewGate()
+	srv := newServer(log)
+	srv.register(gate)
 	go boot.Supervise(ctx, log, gate, true, time.Second, func(ctx context.Context) (func(), error) {
-		return open(ctx, cfg)
+		return open(ctx, log, cfg, srv)
 	})
 
-	log.Info("starting", "http_addr", cfg.HTTPAddr, "redis_url", cfg.RedisURL, "kafka_brokers", cfg.KafkaBrokers)
+	log.Info("starting", "http_addr", cfg.HTTPAddr, "redis_url", cfg.RedisURL, "kafka_brokers", cfg.KafkaBrokers, "max_attempts", cfg.MaxAttempts)
 	if err := httpsrv.Run(ctx, log, cfg.HTTPAddr, gate.Handler()); err != nil {
 		log.Error("stopped", "err", err)
 		os.Exit(1)
 	}
 }
 
-func open(ctx context.Context, cfg config) (func(), error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	stores, err := depend.OpenStores(ctx, cfg.DatabaseURL, cfg.RedisURL, cfg.KafkaBrokers)
+func open(ctx context.Context, log *slog.Logger, cfg config, srv *server) (func(), error) {
+	connCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	stores, err := depend.OpenStores(connCtx, cfg.DatabaseURL, cfg.RedisURL, cfg.KafkaBrokers)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
-	if err := ride.ApplyDDL(ctx, stores.Postgres); err != nil {
+	if err := ride.ApplyDDL(connCtx, stores.Postgres); err != nil {
+		cancel()
 		stores.Close()
 		return nil, err
 	}
-	return stores.Close, nil
+	cancel()
+
+	svc := ride.New(log, ride.NewPostgres(stores.Postgres), ride.NewRedis(stores.Redis), ride.NewKafka(stores.Kafka, cfg.KafkaBrokers, log), cfg.MaxAttempts)
+	loopCtx, loopCancel := context.WithCancel(ctx)
+	go svc.Loop(loopCtx)
+	srv.bind(svc)
+	return func() {
+		loopCancel()
+		svc.Wait()
+		stores.Close()
+	}, nil
 }

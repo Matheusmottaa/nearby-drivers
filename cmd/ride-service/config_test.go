@@ -21,6 +21,20 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.KafkaBrokers != "localhost:9092" {
 		t.Errorf("KafkaBrokers = %q", cfg.KafkaBrokers)
 	}
+	if cfg.MaxAttempts != 3 {
+		t.Errorf("MaxAttempts = %d, want 3", cfg.MaxAttempts)
+	}
+}
+
+func TestLoadConfigMaxAttempts(t *testing.T) {
+	t.Setenv("RIDE_MAX_ATTEMPTS", "5")
+	if cfg := loadConfig(); cfg.MaxAttempts != 5 {
+		t.Errorf("MaxAttempts = %d, want 5", cfg.MaxAttempts)
+	}
+	t.Setenv("RIDE_MAX_ATTEMPTS", "0")
+	if cfg := loadConfig(); cfg.MaxAttempts != 3 {
+		t.Errorf("MaxAttempts = %d, want default 3", cfg.MaxAttempts)
+	}
 }
 
 func TestLoadConfigOverrides(t *testing.T) {

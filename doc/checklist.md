@@ -3,12 +3,13 @@
 Controle do que já foi feito. A definição de cada item está em [etapas.md](etapas.md).
 Marque `[x]` quando o item estiver no repositório e o teste da etapa passar.
 
-Estado em 10 de outubro de 2026: a base de infraestrutura está pronta, inclusive
+Estado em 11 de outubro de 2026: a base de infraestrutura está pronta, inclusive
 nginx, o grafo em `data/maps` (montado em `/data/maps`) e os quatro binários em
 `cmd/`. A etapa 1 fecha o boot, o erro HTTP e o envelope dos sete eventos. A
 etapa 2 fecha o núcleo puro (`internal/geo`, `internal/kdtree` e a busca de
 `internal/graph`). A etapa 3 expõe o ETA e o snap no `routing-service`. A etapa
-4 fecha o cadastro e o índice do `driver-service`. As etapas 5 a 7 ainda não
+4 fecha o cadastro e o índice do `driver-service`. A etapa 5 fecha a máquina
+de estados, a outbox e a API do `ride-service`. As etapas 6 e 7 ainda não
 têm regra de negócio. O DDL de `ride` e `driver` está em `internal/ride/sql` e
 `internal/driver/sql` e o serviço dono aplica esse script, como usuário do
 schema, ao abrir o Postgres.
@@ -96,30 +97,30 @@ schema, ao abrir o Postgres.
 
 ## Etapa 5 — ride-service
 
-- [ ] Tabelas `rides`, `outbox` e `idempotency_keys` no schema `ride`
-- [ ] Índice único parcial em `assigned_driver_id` onde `status = 'DRIVER_ASSIGNED'`
-- [ ] Índice `(status, updated_at)` para status ainda não terminal
-- [ ] Corrida e outbox na mesma transação
-- [ ] Publisher com `FOR UPDATE SKIP LOCKED`; queda no meio reenvia o mesmo `event_id`
-- [ ] Publish de `rides.requested` passa a corrida de `REQUESTED` para `MATCHING`
-- [ ] Redis `idem:{key}` (24 h) e `driver:{id}:res` (30 s, `SETNX`)
-- [ ] Redis fora do ar: `idempotency_keys` e o índice único seguem valendo
-- [ ] Consumer group `ride-workers`, um consumidor
-- [ ] `POST /rides` responde `202` com `Location` e `poll_after_ms`
-- [ ] Mesma `Idempotency-Key` e mesmo corpo: `200`. Corpo diferente: `409`
-- [ ] `GET /rides/{id}`, `wait=3s`, `ETag` / `If-None-Match` → `304`
-- [ ] `GET /rides/{id}/events` em SSE
-- [ ] `POST /rides/{id}/cancel`, inclusive se já estava cancelada
-- [ ] `rides.matched` só no `attempt` atual; `attempt` menor recebe ack e segue
-- [ ] Reserva percorre o ranking; conflito passa ao próximo; ranking esgotado vai para `NO_DRIVER_AVAILABLE`
-- [ ] `rides.match-failed` no `attempt` atual vai para `NO_DRIVER_AVAILABLE`
-- [ ] `lost` publica `rides.released` e, se ainda há tentativa, um novo `rides.requested`
-- [ ] Segundo `lost` da mesma corrida não transiciona de novo
-- [ ] Cancelar com motorista atribuído publica `rides.released`
-- [ ] `version` sobe em toda transição
-- [ ] Uma instância. Nenhuma chamada REST
-- [ ] Teste de tabela da máquina: cada seta, `attempt` estourado, ranking esgotado, `matched` repetido, attempt velho, cancelamento repetido
-- [ ] Teste de integração: outbox na mesma transação, reenvio do `event_id`, duas atribuições do mesmo motorista
+- [x] Tabelas `rides`, `outbox` e `idempotency_keys` no schema `ride`
+- [x] Índice único parcial em `assigned_driver_id` onde `status = 'DRIVER_ASSIGNED'`
+- [x] Índice `(status, updated_at)` para status ainda não terminal
+- [x] Corrida e outbox na mesma transação
+- [x] Publisher com `FOR UPDATE SKIP LOCKED`; queda no meio reenvia o mesmo `event_id`
+- [x] Publish de `rides.requested` passa a corrida de `REQUESTED` para `MATCHING`
+- [x] Redis `idem:{key}` (24 h) e `driver:{id}:res` (30 s, `SETNX`)
+- [x] Redis fora do ar: `idempotency_keys` e o índice único seguem valendo
+- [x] Consumer group `ride-workers`, um consumidor
+- [x] `POST /rides` responde `202` com `Location` e `poll_after_ms`
+- [x] Mesma `Idempotency-Key` e mesmo corpo: `200`. Corpo diferente: `409`
+- [x] `GET /rides/{id}`, `wait=3s`, `ETag` / `If-None-Match` → `304`
+- [x] `GET /rides/{id}/events` em SSE
+- [x] `POST /rides/{id}/cancel`, inclusive se já estava cancelada
+- [x] `rides.matched` só no `attempt` atual; `attempt` menor recebe ack e segue
+- [x] Reserva percorre o ranking; conflito passa ao próximo; ranking esgotado vai para `NO_DRIVER_AVAILABLE`
+- [x] `rides.match-failed` no `attempt` atual vai para `NO_DRIVER_AVAILABLE`
+- [x] `lost` publica `rides.released` e, se ainda há tentativa, um novo `rides.requested`
+- [x] Segundo `lost` da mesma corrida não transiciona de novo
+- [x] Cancelar com motorista atribuído publica `rides.released`
+- [x] `version` sobe em toda transição
+- [x] Uma instância. Nenhuma chamada REST
+- [x] Teste de tabela da máquina: cada seta, `attempt` estourado, ranking esgotado, `matched` repetido, attempt velho, cancelamento repetido
+- [x] Teste de integração: outbox na mesma transação, reenvio do `event_id`, duas atribuições do mesmo motorista
 
 ## Etapa 6 — matching-service
 
