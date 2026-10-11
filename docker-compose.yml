@@ -115,6 +115,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "/ride-service", "-healthcheck"]
       interval: 5s
@@ -139,6 +141,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     # /readyz fica 503 até o índice espacial (etapa 4). -live só diz que o
     # processo escuta; o nginx tira o upstream enquanto /readyz não for 200.
     healthcheck:
@@ -164,6 +168,10 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      nginx:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/matching-service", "-healthcheck"]
       interval: 5s
@@ -179,7 +187,9 @@ services:
 
   routing-2:
     <<: *routing
-    pull_policy: never
+    build:
+      context: .
+      dockerfile: deploy/routing-service/Dockerfile
 
   nginx:
     image: nearby-drivers/nginx:latest

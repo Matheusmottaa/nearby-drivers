@@ -3,7 +3,7 @@ IMAGE_PREFIX ?= nearby-drivers
 TAG ?= latest
 BIN_DIR := bin
 
-.PHONY: help build test vet fmt tidy clean docker-build $(addprefix build-,$(SERVICES)) $(addprefix docker-build-,$(SERVICES)) $(addprefix run-,$(SERVICES))
+.PHONY: help build test vet fmt tidy clean docker-build etapa7 $(addprefix build-,$(SERVICES)) $(addprefix docker-build-,$(SERVICES)) $(addprefix run-,$(SERVICES))
 
 help:
 	@echo "build                  compila os 4 serviços em $(BIN_DIR)/"
@@ -13,6 +13,7 @@ help:
 	@echo "vet | fmt | tidy       verificações e manutenção do módulo"
 	@echo "docker-build           gera as 4 imagens"
 	@echo "docker-build-<serviço> gera a imagem de um serviço"
+	@echo "etapa7                 sobe o compose e percorre o roteiro da etapa 7"
 	@echo "clean                  remove $(BIN_DIR)/"
 
 build: $(addprefix build-,$(SERVICES))
@@ -39,6 +40,9 @@ docker-build: $(addprefix docker-build-,$(SERVICES))
 
 $(addprefix docker-build-,$(SERVICES)): docker-build-%:
 	docker build -f deploy/$*/Dockerfile -t $(IMAGE_PREFIX)/$*:$(TAG) .
+
+etapa7:
+	go run ./scripts/etapa7
 
 clean:
 	rm -rf $(BIN_DIR)

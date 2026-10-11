@@ -3,16 +3,12 @@
 Controle do que já foi feito. A definição de cada item está em [etapas.md](etapas.md).
 Marque `[x]` quando o item estiver no repositório e o teste da etapa passar.
 
-Estado em 11 de outubro de 2026: a base de infraestrutura está pronta, inclusive
-nginx, o grafo em `data/maps` (montado em `/data/maps`) e os quatro binários em
-`cmd/`. A etapa 1 fecha o boot, o erro HTTP e o envelope dos sete eventos. A
-etapa 2 fecha o núcleo puro (`internal/geo`, `internal/kdtree` e a busca de
-`internal/graph`). A etapa 3 expõe o ETA e o snap no `routing-service`. A etapa
-4 fecha o cadastro e o índice do `driver-service`. A etapa 5 fecha a máquina
-de estados, a outbox e a API do `ride-service`. A etapa 6 fecha o ranking do
-`matching-service`. A etapa 7 ainda não tem a borda. O DDL de `ride` e `driver`
-está em `internal/ride/sql` e `internal/driver/sql` e o serviço dono aplica
-esse script, como usuário do schema, ao abrir o Postgres.
+Estado em 11 de outubro de 2026: a base de infraestrutura está pronta e as
+sete etapas fecharam. O passageiro entra pelo nginx. O routing sobe com duas
+réplicas; ride, driver e matching sobem com uma. O roteiro do compose está em
+`scripts/etapa7`. O DDL de `ride` e `driver` está em `internal/ride/sql` e
+`internal/driver/sql` e o serviço dono aplica esse script, como usuário do
+schema, ao abrir o Postgres.
 
 ## Base do repositório
 
@@ -143,20 +139,20 @@ esse script, como usuário do schema, ao abrir o Postgres.
 
 ## Etapa 7 — Nginx, réplicas do routing e o compose fechado
 
-- [ ] nginx como único host do passageiro e do app do motorista
-- [ ] `ride-service`: 1 réplica, rotas `/rides`
-- [ ] `driver-service`: 1 réplica, rotas `/drivers`
-- [ ] `routing-service`: 2 réplicas, só na rede interna, `/routes` e `/nodes`
-- [ ] `matching-service`: 1 réplica, fora do nginx público
-- [ ] Réplica de routing com `/readyz` 503 sai do pool
-- [ ] `503` de pool de Dijkstra faz o matching tentar de novo na outra réplica
-- [ ] Compose sobe os quatro serviços, o nginx, o volume do grafo, Postgres, Redis e Kafka
-- [ ] `make docker-build` gera as quatro imagens
-- [ ] As duas réplicas de routing respondem a mesma `graph_version`
-- [ ] Script: cadastra motorista, `AVAILABLE`, localização
-- [ ] Script: `POST /rides` recebe `202` e `REQUESTED`
-- [ ] Script: `GET` com `wait=3s`, ou o SSE, chega em `DRIVER_ASSIGNED` com `eta_s`, `distance_m` e `eta_engine`
-- [ ] Script: a mesma `Idempotency-Key` e o mesmo corpo devolvem a mesma corrida
-- [ ] Script: parar o heartbeat gera `lost` e rematch, ou `NO_DRIVER_AVAILABLE` se o `attempt` estourou
-- [ ] Script: cancelar a corrida atribuída publica `rides.released` e o motorista volta ao `nearby`
-- [ ] Script: derrubar as réplicas de routing ainda atribui corrida, com `engine: haversine-fallback`
+- [x] nginx como único host do passageiro e do app do motorista
+- [x] `ride-service`: 1 réplica, rotas `/rides`
+- [x] `driver-service`: 1 réplica, rotas `/drivers`
+- [x] `routing-service`: 2 réplicas, só na rede interna, `/routes` e `/nodes`
+- [x] `matching-service`: 1 réplica, fora do nginx público
+- [x] Réplica de routing com `/readyz` 503 sai do pool
+- [x] `503` de pool de Dijkstra faz o matching tentar de novo na outra réplica
+- [x] Compose sobe os quatro serviços, o nginx, o volume do grafo, Postgres, Redis e Kafka
+- [x] `make docker-build` gera as quatro imagens
+- [x] As duas réplicas de routing respondem a mesma `graph_version`
+- [x] Script: cadastra motorista, `AVAILABLE`, localização
+- [x] Script: `POST /rides` recebe `202` e `REQUESTED`
+- [x] Script: `GET` com `wait=3s`, ou o SSE, chega em `DRIVER_ASSIGNED` com `eta_s`, `distance_m` e `eta_engine`
+- [x] Script: a mesma `Idempotency-Key` e o mesmo corpo devolvem a mesma corrida
+- [x] Script: parar o heartbeat gera `lost` e rematch, ou `NO_DRIVER_AVAILABLE` se o `attempt` estourou
+- [x] Script: cancelar a corrida atribuída publica `rides.released` e o motorista volta ao `nearby`
+- [x] Script: derrubar as réplicas de routing ainda atribui corrida, com `engine: haversine-fallback`
