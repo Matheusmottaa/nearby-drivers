@@ -11,6 +11,7 @@ import (
 	"github.com/Matheusmottaa/nearby-drivers/internal/boot"
 	"github.com/Matheusmottaa/nearby-drivers/internal/depend"
 	"github.com/Matheusmottaa/nearby-drivers/internal/httpsrv"
+	"github.com/Matheusmottaa/nearby-drivers/internal/matching"
 )
 
 func main() {
@@ -38,6 +39,8 @@ func main() {
 		"kafka_brokers", cfg.KafkaBrokers,
 		"driver_url", cfg.DriverURL,
 		"routing_url", cfg.RoutingURL,
+		"match_k", cfg.MatchK,
+		"radius_m", cfg.RadiusM,
 	)
 	if err := httpsrv.Run(ctx, log, cfg.HTTPAddr, gate.Handler()); err != nil {
 		log.Error("stopped", "err", err)
@@ -46,20 +49,41 @@ func main() {
 }
 
 func open(ctx context.Context, log *slog.Logger, cfg config) (func(), error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	connCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	cl, err := depend.OpenKafka(ctx, cfg.KafkaBrokers)
+	cl, err := depend.OpenKafka(connCtx, cfg.KafkaBrokers)
 	if err != nil {
 		return nil, err
 	}
-	rdb, err := depend.OpenRedis(ctx, cfg.RedisURL)
+	dedup := matching.Dedup(matching.NopDedup{})
+	var closeRedis func()
+	rdb, err := depend.OpenRedis(connCtx, cfg.RedisURL)
 	if err != nil {
 		log.Error("redis unavailable", "err", err)
-		return cl.Close, nil
+	} else {
+		dedup = matching.NewRedis(rdb)
+		closeRedis = func() { _ = rdb.Close() }
 	}
+
+	bus := matching.NewKafka(cl, cfg.KafkaBrokers, log)
+	opt := matching.DefaultClientOptions()
+	svc := matching.New(log,
+		matching.NewNearbyClient(cfg.DriverURL, opt),
+		matching.NewETAClient(cfg.RoutingURL, opt),
+		dedup,
+		bus,
+		matching.Options{K: cfg.MatchK, RadiusM: cfg.RadiusM, SpeedMPS: cfg.SpeedMPS},
+	)
+	svc.UseKafka(bus)
+	loopCtx, loopCancel := context.WithCancel(ctx)
+	svc.Loop(loopCtx)
 	return func() {
-		_ = rdb.Close()
+		loopCancel()
+		svc.Wait()
+		if closeRedis != nil {
+			closeRedis()
+		}
 		cl.Close()
 	}, nil
 }

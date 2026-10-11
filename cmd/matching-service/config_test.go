@@ -22,6 +22,9 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.RedisURL != "redis://localhost:6379" || cfg.KafkaBrokers != "localhost:9092" {
 		t.Errorf("config = %+v", cfg)
 	}
+	if cfg.MatchK != 10 || cfg.RadiusM != 3000 || cfg.SpeedMPS != 8.33 {
+		t.Errorf("policy = %+v", cfg)
+	}
 }
 
 func TestLoadConfigOverrides(t *testing.T) {
@@ -30,6 +33,9 @@ func TestLoadConfigOverrides(t *testing.T) {
 	t.Setenv("KAFKA_BROKERS", "kafka:19092")
 	t.Setenv("DRIVER_URL", "http://nginx:8080")
 	t.Setenv("ROUTING_URL", "http://nginx:8081")
+	t.Setenv("MATCH_K", "25")
+	t.Setenv("MATCH_RADIUS_M", "1500")
+	t.Setenv("HAVERSINE_SPEED_MPS", "10")
 
 	cfg := loadConfig()
 	if cfg.DriverURL != "http://nginx:8080" || cfg.RoutingURL != "http://nginx:8081" {
@@ -37,5 +43,8 @@ func TestLoadConfigOverrides(t *testing.T) {
 	}
 	if cfg.HTTPAddr != ":9090" || cfg.KafkaBrokers != "kafka:19092" || cfg.RedisURL != "redis://cache:6379" {
 		t.Errorf("config = %+v", cfg)
+	}
+	if cfg.MatchK != 25 || cfg.RadiusM != 1500 || cfg.SpeedMPS != 10 {
+		t.Errorf("policy = %+v", cfg)
 	}
 }

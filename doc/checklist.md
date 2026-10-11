@@ -9,10 +9,10 @@ nginx, o grafo em `data/maps` (montado em `/data/maps`) e os quatro binários em
 etapa 2 fecha o núcleo puro (`internal/geo`, `internal/kdtree` e a busca de
 `internal/graph`). A etapa 3 expõe o ETA e o snap no `routing-service`. A etapa
 4 fecha o cadastro e o índice do `driver-service`. A etapa 5 fecha a máquina
-de estados, a outbox e a API do `ride-service`. As etapas 6 e 7 ainda não
-têm regra de negócio. O DDL de `ride` e `driver` está em `internal/ride/sql` e
-`internal/driver/sql` e o serviço dono aplica esse script, como usuário do
-schema, ao abrir o Postgres.
+de estados, a outbox e a API do `ride-service`. A etapa 6 fecha o ranking do
+`matching-service`. A etapa 7 ainda não tem a borda. O DDL de `ride` e `driver`
+está em `internal/ride/sql` e `internal/driver/sql` e o serviço dono aplica
+esse script, como usuário do schema, ao abrir o Postgres.
 
 ## Base do repositório
 
@@ -124,22 +124,22 @@ schema, ao abrir o Postgres.
 
 ## Etapa 6 — matching-service
 
-- [ ] Consumer group `matchers`, um consumidor. Ack só depois do publish
-- [ ] Redis `evt:{event_id}`, TTL 1 h. Redis fora do ar não para o serviço
-- [ ] Clientes de `nearby` e `eta:batch`: timeout 800 ms, 2 retries com jitter, circuit breaker
-- [ ] Breaker aberto cai no Haversine e não vira `match-failed`
-- [ ] Ignora `event_id` já visto
-- [ ] Pede até `MATCH_K` candidatos, teto 50, e remove `exclude_driver_ids` antes do ETA
-- [ ] Lista vazia depois da exclusão: `match-failed` com `no_candidate`
-- [ ] Uma chamada `eta:batch`; descarta `reachable: false`; ordena por `NearestETA`
-- [ ] Desempate: `distance_m` menor, depois `driver_id` crescente
-- [ ] Ninguém alcançável: `match-failed` com `none_reachable`
-- [ ] Routing fora: ranking com `engine: haversine-fallback`
-- [ ] Ranking publicado inteiro, com o `attempt` intacto
-- [ ] `/healthz` e `/readyz`; ready exige broker. Sem rota de produto
-- [ ] Uma instância, fora do nginx público
-- [ ] Teste com fakes: ranking por ETA, exclusão antes do ETA, fallback Haversine, `no_candidate`, `none_reachable`, `event_id` único, ack só se o publish funciona
-- [ ] Teste de integração: `POST /rides` até `DRIVER_ASSIGNED`, com o `trace_id` no evento e no log
+- [x] Consumer group `matchers`, um consumidor. Ack só depois do publish
+- [x] Redis `evt:{event_id}`, TTL 1 h. Redis fora do ar não para o serviço
+- [x] Clientes de `nearby` e `eta:batch`: timeout 800 ms, 2 retries com jitter, circuit breaker
+- [x] Breaker aberto cai no Haversine e não vira `match-failed`
+- [x] Ignora `event_id` já visto
+- [x] Pede até `MATCH_K` candidatos, teto 50, e remove `exclude_driver_ids` antes do ETA
+- [x] Lista vazia depois da exclusão: `match-failed` com `no_candidate`
+- [x] Uma chamada `eta:batch`; descarta `reachable: false`; ordena por `NearestETA`
+- [x] Desempate: `distance_m` menor, depois `driver_id` crescente
+- [x] Ninguém alcançável: `match-failed` com `none_reachable`
+- [x] Routing fora: ranking com `engine: haversine-fallback`
+- [x] Ranking publicado inteiro, com o `attempt` intacto
+- [x] `/healthz` e `/readyz`; ready exige broker. Sem rota de produto
+- [x] Uma instância, fora do nginx público
+- [x] Teste com fakes: ranking por ETA, exclusão antes do ETA, fallback Haversine, `no_candidate`, `none_reachable`, `event_id` único, ack só se o publish funciona
+- [x] Teste de integração: `POST /rides` até `DRIVER_ASSIGNED`, com o `trace_id` no evento e no log
 
 ## Etapa 7 — Nginx, réplicas do routing e o compose fechado
 
