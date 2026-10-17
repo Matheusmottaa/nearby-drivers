@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-eta-batch
+  labels:
+    app: k6
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: k6
+    spec:
+      restartPolicy: Never
+      securityContext:
+        # Uma conexão por iteração deixa milhares de portas em TIME_WAIT.
+        sysctls:
+          - name: net.ipv4.ip_local_port_range
+            value: "1024 65000"
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          args: ["run", "--no-usage-report", "-o", "experimental-prometheus-rw", "/scripts/eta-batch.js"]
+          env:
+            - name: BASE_URL
+              value: http://routing:8080
+            - name: PEAK_VUS
+              value: "300"
+            - name: HOLD
+              value: 3m
+            - name: K6_PROMETHEUS_RW_SERVER_URL
+              value: http://prometheus:9090/api/v1/write
+            - name: K6_PROMETHEUS_RW_PUSH_INTERVAL
+              value: 5s
+            - name: K6_PROMETHEUS_RW_TREND_STATS
+              value: p(95),med
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-scripts

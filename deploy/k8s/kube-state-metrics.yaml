@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-state-metrics
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nearby-drivers-kube-state-metrics
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets]
+    verbs: [list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nearby-drivers-kube-state-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nearby-drivers-kube-state-metrics
+subjects:
+  - kind: ServiceAccount
+    name: kube-state-metrics
+    namespace: nearby-drivers
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  labels:
+    app: kube-state-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      serviceAccountName: kube-state-metrics
+      containers:
+        - name: kube-state-metrics
+          image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.13.0
+          args:
+            - --resources=deployments,horizontalpodautoscalers,pods,replicasets
+            - --namespaces=nearby-drivers
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+  labels:
+    app: kube-state-metrics
+spec:
+  selector:
+    app: kube-state-metrics
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

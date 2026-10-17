@@ -1,0 +1,30 @@
+# O grafo vem de data/maps, fora desta pasta: aplique com
+#   kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/k8s | kubectl apply -f -
+# (deploy/k8s/up.ps1 e make k8s-up fazem isso).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: nearby-drivers
+
+resources:
+  - namespace.yaml
+  - routing.yaml
+  - kube-state-metrics.yaml
+  - prometheus.yaml
+  - grafana.yaml
+
+configMapGenerator:
+  - name: routing-graph
+    files:
+      - graph.txt=../../data/maps/graph.txt
+  - name: prometheus-config
+    files:
+      - prometheus/prometheus.yml
+  - name: grafana-datasources
+    files:
+      - grafana/datasources.yaml
+  - name: grafana-dashboard-providers
+    files:
+      - grafana/dashboard-providers.yaml
+  - name: grafana-dashboards
+    files:
+      - grafana/routing-hpa.json

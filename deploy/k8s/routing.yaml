@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: routing
+  labels:
+    app: routing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: routing
+  template:
+    metadata:
+      labels:
+        app: routing
+    spec:
+      containers:
+        - name: routing
+          image: nearby-drivers/routing-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: HTTP_ADDR
+              value: ":8080"
+            - name: GRAPH_PATH
+              value: /data/maps/graph.txt
+            # Uma CPU lógica por pod: a carga vira utilização de CPU, não paralelismo dentro do pod.
+            - name: GOMAXPROCS
+              value: "1"
+            - name: ROUTING_POOL_SIZE
+              value: "64"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: "1"
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: maps
+              mountPath: /data/maps
+              readOnly: true
+      volumes:
+        - name: maps
+          configMap:
+            name: routing-graph
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: routing
+  labels:
+    app: routing
+spec:
+  selector:
+    app: routing
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: routing
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: routing
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 15
