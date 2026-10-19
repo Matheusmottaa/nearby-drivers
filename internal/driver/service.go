@@ -133,6 +133,9 @@ func (s *Service) Ready() bool { return s.ready.Load() }
 // Slot returns a copy of the in-memory slot.
 func (s *Service) Slot(id string) (Slot, bool) { return s.slots.Get(id) }
 
+// AvailableDrivers is how many drivers are AVAILABLE and not on a ride.
+func (s *Service) AvailableDrivers() int { return s.slots.Available() }
+
 // Boot loads registrations, replays the location window and publishes the first snapshot.
 // /readyz stays closed until this returns nil.
 func (s *Service) Boot(ctx context.Context) error {

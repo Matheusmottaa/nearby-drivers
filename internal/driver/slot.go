@@ -196,6 +196,19 @@ type dueReservation struct {
 	RideID   string
 }
 
+// Available is the number of drivers declared AVAILABLE and not on a ride.
+func (t *table) Available() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	var n int
+	for _, sl := range t.slots {
+		if sl.DriverID != "" && sl.Available && !sl.Reserved {
+			n++
+		}
+	}
+	return n
+}
+
 func (t *table) DueLost(now time.Time) []dueReservation {
 	t.mu.RLock()
 	defer t.mu.RUnlock()

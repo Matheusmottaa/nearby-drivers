@@ -1,10 +1,10 @@
 {
   "uid": "routing-hpa",
-  "title": "routing-service: HPA sob carga",
+  "title": "nearby-drivers",
   "tags": ["nearby-drivers", "k8s"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 7,
   "editable": false,
   "graphTooltip": 1,
   "refresh": "5s",
@@ -14,128 +14,71 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Réplicas desejadas (HPA)",
+      "title": "ride-service",
+      "description": "Pods prontos. Sobe com 1.",
       "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "max(kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=\"routing\"})",
-          "instant": true
-        }
-      ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
-      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } } }
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"ride\"})" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } } }
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "Pods prontos",
+      "title": "driver-service",
+      "description": "Pods prontos. Sobe com 1.",
       "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "max(kube_deployment_status_replicas_ready{deployment=\"routing\"})",
-          "instant": true
-        }
-      ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
-      "fieldConfig": { "defaults": { "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } }
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"driver\"})" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } } }
     },
     {
       "id": 3,
       "type": "stat",
-      "title": "CPU média / alvo do HPA",
+      "title": "matching-service",
+      "description": "Pods prontos. Comeca em 1 e sobe ate 3 quando a carga passa de 60% de CPU.",
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "legendFormat": "atual",
-          "expr": "max(kube_horizontalpodautoscaler_status_target_metric{horizontalpodautoscaler=\"routing\",metric_name=\"cpu\",metric_target_type=\"utilization\"})",
-          "instant": true
-        },
-        {
-          "refId": "B",
-          "legendFormat": "alvo",
-          "expr": "max(kube_horizontalpodautoscaler_spec_target_metric{horizontalpodautoscaler=\"routing\",metric_name=\"cpu\",metric_target_type=\"utilization\"})",
-          "instant": true
-        }
-      ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none", "textMode": "value_and_name" },
-      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 60 }] } } }
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"matching\"})" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } } }
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "Requisições/s (k6)",
+      "title": "routing-service",
+      "description": "Pods prontos. Comeca em 2 e sobe ate 4 quando a carga passa de 60% de CPU.",
       "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum(rate(k6_http_reqs_total[15s])) or vector(0)",
-          "instant": true
-        }
-      ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
-      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] } } }
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "Réplicas do routing",
-      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 9 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "legendFormat": "desejadas pelo HPA",
-          "expr": "max(kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=\"routing\"})"
-        },
-        {
-          "refId": "B",
-          "legendFormat": "pods prontos",
-          "expr": "max(kube_deployment_status_replicas_ready{deployment=\"routing\"})"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 0,
-          "min": 0,
-          "max": 5,
-          "custom": { "lineInterpolation": "stepAfter", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
-        },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "desejadas pelo HPA" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }] },
-          { "matcher": { "id": "byName", "options": "pods prontos" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
-        ]
-      },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"routing\"})" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } } }
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Carga do k6",
-      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 9 },
+      "title": "Pods",
+      "description": "Pods prontos de cada servico. matching-service sobe de 1 ate 3 e routing-service de 2 ate 4, um pod a cada 30s, quando a CPU passa de 60%.",
+      "gridPos": { "x": 0, "y": 4, "w": 16, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "refId": "A",
-          "legendFormat": "status {{status}}",
-          "expr": "sum by (status) (rate(k6_http_reqs_total[15s]))"
-        },
-        {
-          "refId": "B",
-          "legendFormat": "VUs",
-          "expr": "max(k6_vus)"
-        }
+        { "refId": "A", "legendFormat": "ride-service", "expr": "max(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"ride\"})" },
+        { "refId": "B", "legendFormat": "driver-service", "expr": "max(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"driver\"})" },
+        { "refId": "C", "legendFormat": "matching-service", "expr": "max(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"matching\"})" },
+        { "refId": "F", "legendFormat": "matching-service - desejados", "expr": "max(kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=\"matching\"})" },
+        { "refId": "D", "legendFormat": "routing-service", "expr": "max(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"routing\"})" },
+        { "refId": "E", "legendFormat": "routing-service - desejados", "expr": "max(kube_horizontalpodautoscaler_status_desired_replicas{horizontalpodautoscaler=\"routing\"})" }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "reqps", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
+        "defaults": { "decimals": 0, "min": 0, "max": 4, "custom": { "lineInterpolation": "stepAfter", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "VUs" }, "properties": [{ "id": "unit", "value": "none" }, { "id": "custom.axisPlacement", "value": "right" }, { "id": "custom.fillOpacity", "value": 0 }, { "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }] }
+          { "matcher": { "id": "byName", "options": "ride-service" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "driver-service" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "matching-service" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }] },
+          { "matcher": { "id": "byName", "options": "matching-service - desejados" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }] },
+          { "matcher": { "id": "byName", "options": "routing-service" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "routing-service - desejados" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }] }
         ]
       },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
@@ -143,25 +86,21 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "CPU vista pelo HPA (% do request)",
-      "gridPos": { "x": 0, "y": 13, "w": 8, "h": 8 },
+      "title": "CPU",
+      "description": "Porcentagem do CPU pedido. A linha vermelha e o alvo de 60% do matching-service e do routing-service.",
+      "gridPos": { "x": 16, "y": 4, "w": 8, "h": 9 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "refId": "A",
-          "legendFormat": "média dos pods",
-          "expr": "max(kube_horizontalpodautoscaler_status_target_metric{horizontalpodautoscaler=\"routing\",metric_name=\"cpu\",metric_target_type=\"utilization\"})"
-        },
-        {
-          "refId": "B",
-          "legendFormat": "alvo",
-          "expr": "max(kube_horizontalpodautoscaler_spec_target_metric{horizontalpodautoscaler=\"routing\",metric_name=\"cpu\",metric_target_type=\"utilization\"})"
-        }
+        { "refId": "A", "legendFormat": "matching-service - CPU atual", "expr": "max(kube_horizontalpodautoscaler_status_target_metric{horizontalpodautoscaler=\"matching\",metric_name=\"cpu\",metric_target_type=\"utilization\"})" },
+        { "refId": "B", "legendFormat": "routing-service - CPU atual", "expr": "max(kube_horizontalpodautoscaler_status_target_metric{horizontalpodautoscaler=\"routing\",metric_name=\"cpu\",metric_target_type=\"utilization\"})" },
+        { "refId": "C", "legendFormat": "alvo 60%", "expr": "max(kube_horizontalpodautoscaler_spec_target_metric{horizontalpodautoscaler=\"routing\",metric_name=\"cpu\",metric_target_type=\"utilization\"})" }
       ],
       "fieldConfig": {
         "defaults": { "unit": "percent", "min": 0, "custom": { "lineWidth": 2, "showPoints": "never" } },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "alvo" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }] }
+          { "matcher": { "id": "byName", "options": "matching-service - CPU atual" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }] },
+          { "matcher": { "id": "byName", "options": "routing-service - CPU atual" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "alvo 60%" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }] }
         ]
       },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
@@ -169,38 +108,14 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "CPU por pod (cAdvisor)",
-      "gridPos": { "x": 8, "y": 13, "w": 8, "h": 8 },
+      "title": "Requisicoes por segundo",
+      "description": "Requisicoes por segundo do routing-service no cluster.",
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        {
-          "refId": "A",
-          "legendFormat": "{{pod}}",
-          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"nearby-drivers\",pod=~\"routing-.+\"}[30s]))"
-        }
+        { "refId": "A", "legendFormat": "routing-service", "expr": "sum(rate(k6_http_reqs_total[1m]))" }
       ],
-      "fieldConfig": { "defaults": { "unit": "cores", "min": 0, "custom": { "lineWidth": 2, "showPoints": "never" } } },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "Latência do eta:batch (k6)",
-      "gridPos": { "x": 16, "y": 13, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "legendFormat": "p95",
-          "expr": "max(k6_http_req_duration_p95)"
-        },
-        {
-          "refId": "B",
-          "legendFormat": "mediana",
-          "expr": "max(k6_http_req_duration_med)"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "lineWidth": 2, "showPoints": "never" } } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } } },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     }
   ]

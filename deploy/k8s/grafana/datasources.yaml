@@ -8,3 +8,16 @@ datasources:
     isDefault: true
     jsonData:
       timeInterval: 5s
+  - name: Postgres (ride)
+    uid: postgres-ride
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: postgres:5432
+    user: grafana
+    secureJsonData:
+      password: grafana
+    jsonData:
+      database: nearby
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false

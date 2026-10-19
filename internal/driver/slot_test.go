@@ -154,6 +154,9 @@ func TestInternalIDIsTheSlotIndex(t *testing.T) {
 	if !tb.slots[2].Reserved || tb.slots[2].RideID != "ride-1" || !tb.slots[2].Available {
 		t.Fatalf("on trip slot = %+v", tb.slots[2])
 	}
+	if tb.Available() != 1 {
+		t.Fatalf("available = %d, want 1", tb.Available())
+	}
 	got, ok := tb.Get("c")
 	if !ok || got.InternalID != 2 {
 		t.Fatalf("get = %+v %v", got, ok)

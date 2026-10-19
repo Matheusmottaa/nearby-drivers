@@ -5,8 +5,8 @@ Marque `[x]` quando o item estiver no repositório e o teste da etapa passar.
 
 Estado em 11 de outubro de 2026: a base de infraestrutura está pronta e as
 sete etapas fecharam. O passageiro entra pelo nginx. O routing sobe com duas
-réplicas; ride, driver e matching sobem com uma. O roteiro do compose está em
-`scripts/etapa7`. O DDL de `ride` e `driver` está em `internal/ride/sql` e
+réplicas; ride, driver e matching sobem com uma. A execução local ficou no
+cluster Kubernetes (`make k8s-up`). O DDL de `ride` e `driver` está em `internal/ride/sql` e
 `internal/driver/sql` e o serviço dono aplica esse script, como usuário do
 schema, ao abrir o Postgres.
 

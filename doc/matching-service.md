@@ -5,9 +5,10 @@ embarque e publica o resultado. Não grava corrida, não reserva motorista e nã
 calcula rota. É uma função: pedido mais o estado do mundo naquele instante →
 lista ordenada.
 
-Roda em **1 instância**, no consumer group `matchers`. Não fica atrás do nginx
-público: ninguém chama este serviço por HTTP de produto. Só `/healthz` e
-`/readyz`.
+Roda no consumer group `matchers`. No cluster começa com 1 pod e o autoscaler
+sobe até 3, uma cópia por partição de `rides.requested`, quando a CPU passa de
+60%. Não fica atrás do nginx público: ninguém chama este serviço por HTTP de
+produto. Só `/healthz` e `/readyz`.
 
 ## O que faz
 
@@ -129,6 +130,13 @@ que já têm dono.
 | `matching.failed` por motivo | contador | `no_candidate` e `none_reachable` |
 | `matching.duplicate_event` | contador | Entregas repetidas barradas no Redis |
 | `kafka.consumer.lag` (`rides.requested`) | gauge | Pedidos esperando matching |
+
+`GET /metrics` expõe os mesmos contadores no texto do Prometheus, sem biblioteca
+cliente. O log mantém o nome da tabela. No scrape, `matching.fallback` aparece
+como `matching_fallback_total` e como
+`matching_rankings_total{engine="haversine-fallback"}`.
+`matching_routing_breaker_open` fica em 1 enquanto o circuit breaker do routing
+recusa chamada.
 
 Spans: consumo de `rides.requested`, chamada ao `nearby`, chamada ao
 `eta:batch` e publish de `rides.matched`, todos com o `trace_id` do pedido.

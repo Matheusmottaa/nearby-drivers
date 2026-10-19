@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Matheusmottaa/nearby-drivers/internal/problem"
@@ -61,6 +62,31 @@ func TestNotFoundCarriesTraceID(t *testing.T) {
 	}
 	if got.TraceID != "req-abc123" || got.Status != http.StatusNotFound {
 		t.Fatalf("problem = %#v", got)
+	}
+}
+
+func TestHTTPRequestMetrics(t *testing.T) {
+	g := NewGate()
+	g.Handle("POST /rides", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	h := g.Handler()
+	for range 2 {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/rides", nil))
+	}
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `http_requests_total{method="POST",route="/rides",code="202"} 2`) {
+		t.Fatalf("metrics = %s", body)
+	}
+	if strings.Contains(body, "/healthz") {
+		t.Fatalf("probe was counted: %s", body)
 	}
 }
 

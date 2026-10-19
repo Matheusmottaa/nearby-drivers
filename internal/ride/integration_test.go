@@ -147,6 +147,18 @@ func TestOutboxAndAssignment(t *testing.T) {
 	if !drivers[driver1] || !drivers[driver2] {
 		t.Fatalf("drivers = %v", drivers)
 	}
+	for _, id := range []string{left.ID, right.ID} {
+		var ranked []string
+		if err := pool.QueryRow(ctx, `
+			SELECT array_agg(c->>'driver_id' ORDER BY pos)
+			FROM rankings, jsonb_array_elements(candidates) WITH ORDINALITY AS r(c, pos)
+			WHERE ride_id = $1::uuid AND attempt = 1`, id).Scan(&ranked); err != nil {
+			t.Fatalf("ranking %s: %v", id, err)
+		}
+		if len(ranked) != 2 || ranked[0] != driver1 || ranked[1] != driver2 {
+			t.Fatalf("ranking %s = %v, want [%s %s]", id, ranked, driver1, driver2)
+		}
+	}
 }
 
 func consumeRequested(t *testing.T, ctx context.Context, brokers, rideID string, out chan<- event.Requested) {

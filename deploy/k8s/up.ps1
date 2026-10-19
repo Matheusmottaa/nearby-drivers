@@ -1,16 +1,22 @@
 ﻿<#
 .SYNOPSIS
-  Sobe o routing-service com HPA, Prometheus e Grafana no Kubernetes do Docker Desktop.
+  Sobe ride, driver, matching e routing, com Prometheus e Grafana, no Kubernetes do Docker Desktop.
 
 .EXAMPLE
   .\deploy\k8s\up.ps1              # build da imagem, metrics-server, apply e espera
   .\deploy\k8s\up.ps1 -SkipBuild   # reaplica sem rebuild da imagem
-  .\deploy\k8s\up.ps1 -Load        # roda o Job do k6 e acompanha o log
+  .\deploy\k8s\up.ps1 -Load        # roda o Job do k6 contra o routing e acompanha o log
+  .\deploy\k8s\up.ps1 -Rides       # 30 motoristas e 8 solicitantes
+  .\deploy\k8s\up.ps1 -Rides -Drivers 50 -Passengers 12 -Hold 5m
   .\deploy\k8s\up.ps1 -Down        # remove o namespace nearby-drivers
 #>
 param(
     [switch]$SkipBuild,
     [switch]$Load,
+    [switch]$Rides,
+    [int]$Drivers = 30,
+    [int]$Passengers = 8,
+    [string]$Hold = '3m',
     [switch]$Down
 )
 
@@ -20,7 +26,7 @@ $OutputEncoding = $utf8
 [Console]::OutputEncoding = $utf8
 
 $Namespace = 'nearby-drivers'
-$Image = 'nearby-drivers/routing-service:latest'
+$Services = @('ride-service', 'driver-service', 'matching-service', 'routing-service')
 $MetricsServerURL = 'https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
@@ -95,11 +101,16 @@ function Start-Cluster {
     Initialize-MetricsServer
 
     if (-not $SkipBuild) {
-        Write-Host "Build de $Image."
-        Invoke-Native { docker build -f (Join-Path $Root 'deploy/routing-service/Dockerfile') -t $Image $Root }
+        foreach ($svc in $Services) {
+            $image = "nearby-drivers/${svc}:latest"
+            Write-Host "Build de $image."
+            Invoke-Native { docker build -f (Join-Path $Root "deploy/$svc/Dockerfile") -t $image $Root }
+        }
     }
 
     $existed = Test-Native { kubectl get deployment routing -n $Namespace }
+
+    Invoke-Native { kubectl delete job kafka-init -n $Namespace --ignore-not-found --wait=true }
 
     $manifest = New-TemporaryFile
     try {
@@ -112,17 +123,56 @@ function Start-Cluster {
 
     # A tag latest não muda no rebuild: só um restart faz os pods pegarem a imagem nova.
     if ($existed -and -not $SkipBuild) {
-        Invoke-Native { kubectl rollout restart deployment/routing -n $Namespace }
+        Invoke-Native { kubectl rollout restart deployment/ride deployment/driver deployment/matching deployment/routing -n $Namespace }
     }
 
-    foreach ($d in 'routing', 'kube-state-metrics', 'prometheus', 'grafana') {
-        Invoke-Native { kubectl rollout status "deployment/$d" -n $Namespace --timeout=180s }
+    foreach ($d in 'postgres', 'redis', 'kafka', 'ride', 'driver', 'matching', 'routing', 'kube-state-metrics', 'prometheus', 'grafana') {
+        Invoke-Native { kubectl rollout status "deployment/$d" -n $Namespace --timeout=300s }
     }
 
     Write-Host ''
     Write-Host 'Grafana: http://localhost:30300  (admin / admin; o dashboard abre como página inicial)'
+    Write-Host 'Corridas: http://localhost:30300/d/rides-flow  |  gerar corridas: .\deploy\k8s\ride-demo.ps1'
     Write-Host 'Carga:   .\deploy\k8s\up.ps1 -Load'
+    Write-Host 'Corridas k6: .\deploy\k8s\up.ps1 -Rides -Drivers 30 -Passengers 8'
     Write-Host "Acompanhe: kubectl get hpa -n $Namespace -w   |   kubectl get pods -n $Namespace -w"
+}
+
+function Set-JobEnv {
+    param(
+        [Parameter(Mandatory)][string]$Yaml,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Value
+    )
+    $pattern = "(?m)(name: $Name\r?\n\s+value: ).*"
+    $updated = [regex]::Replace($Yaml, $pattern, "`${1}`"$Value`"", 1)
+    if ($updated -eq $Yaml) { throw "não achei env $Name no Job do k6" }
+    return $updated
+}
+
+function Start-Rides {
+    if (-not (Test-Native { kubectl get deployment ride -n $Namespace })) {
+        throw 'ride não está no cluster. Rode .\deploy\k8s\up.ps1 antes.'
+    }
+    if ($Drivers -lt 0) { throw 'Drivers tem que ser >= 0' }
+    if ($Passengers -lt 1) { throw 'Passengers tem que ser >= 1' }
+
+    Invoke-Native { kubectl delete job k6-rides -n $Namespace --ignore-not-found --wait=true }
+    $ErrorActionPreference = 'Continue'
+    $rendered = (kubectl kustomize (Join-Path $Root 'deploy/k6-rides')) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "kustomize de deploy/k6-rides falhou (exit $LASTEXITCODE)" }
+    $ErrorActionPreference = 'Stop'
+    $rendered = Set-JobEnv $rendered 'DRIVERS' $Drivers
+    $rendered = Set-JobEnv $rendered 'PASSENGERS' $Passengers
+    $rendered = Set-JobEnv $rendered 'HOLD' $Hold
+    $manifest = Join-Path $env:TEMP 'k6-rides.yaml'
+    [System.IO.File]::WriteAllText($manifest, $rendered, $utf8)
+    Invoke-Native { kubectl apply -f $manifest }
+    Invoke-Native { kubectl wait --for=condition=Ready pod -l job-name=k6-rides -n $Namespace --timeout=180s }
+    Write-Host "$Drivers motoristas, $Passengers solicitantes, por $Hold."
+    Write-Host 'Corridas: http://localhost:30300/d/rides-flow'
+    Write-Host 'Cluster:  http://localhost:30300/d/routing-hpa'
+    kubectl logs -f job/k6-rides -n $Namespace
 }
 
 function Start-Load {
@@ -143,6 +193,8 @@ if ($Down) {
     Invoke-Native { kubectl delete clusterrole,clusterrolebinding nearby-drivers-prometheus nearby-drivers-kube-state-metrics --ignore-not-found }
 } elseif ($Load) {
     Start-Load
+} elseif ($Rides) {
+    Start-Rides
 } else {
     Start-Cluster
 }

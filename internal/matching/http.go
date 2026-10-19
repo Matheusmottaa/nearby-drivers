@@ -110,6 +110,11 @@ func NewETAClient(base string, opt ClientOptions) *ETAClient {
 	return &ETAClient{caller: newCaller(base, opt)}
 }
 
+// BreakerOpen reports whether the routing circuit is refusing calls.
+func (c *ETAClient) BreakerOpen() bool {
+	return c.breaker.State() == breakerOpen
+}
+
 func (c *NearbyClient) Nearby(ctx context.Context, traceID string, pickup geo.Point, radiusM float64, k int, class string) ([]NearbyDriver, error) {
 	q := url.Values{}
 	q.Set("lat", strconv.FormatFloat(pickup.Lat, 'f', -1, 64))

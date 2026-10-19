@@ -8,10 +8,11 @@ termina em `DRIVER_ASSIGNED`.
 
 ![Diagrama de arquitetura](doc/asset/architecture_diagram.png)
 
-O passageiro entra pelo nginx, o único host dos serviços HTTP. Ride, driver e
-matching sobem com uma instância. Só o `routing-service` sobe com mais de uma
-réplica: o nginx balanceia essas réplicas na rede interna e tira do pool quem
-não responde ao `/readyz`. O `POST /rides` grava a corrida e responde `202`
+O passageiro entra pelo nginx, o único host dos serviços HTTP. Ride e driver
+sobem com uma instância. O `matching-service` começa com uma e o autoscaler
+sobe até três, uma por partição de `rides.requested`. O `routing-service` sobe
+com mais de uma réplica: o nginx balanceia essas réplicas na rede interna e
+tira do pool quem não responde ao `/readyz`. O `POST /rides` grava a corrida e responde `202`
 sem esperar motorista; o matching acontece de forma assíncrona via Kafka.
 
 1. `ride-service` grava a corrida em `REQUESTED` com o evento na outbox e
@@ -46,3 +47,7 @@ A ordem de construção está em [doc/etapas.md](doc/etapas.md).
 | Kafka | `rides.*` (7 dias), `drivers.location` (replay de 5 minutos), `drivers.presence` (1 hora) |
 | PostgreSQL | Schema `ride` (corridas, outbox, idempotência) e schema `driver` (cadastro) |
 | Redis | Idempotency key, dedup de `event_id`, reserva rápida e última posição. Só TTL, sem persistência |
+| Grafana | Painel do cluster em http://localhost:30300 (admin / admin). `make k8s-up` sobe os quatro serviços, o Prometheus e o Grafana. O fluxo de cada corrida fica em http://localhost:30300/d/rides-flow; `deploy/k8s/ride-demo.ps1` gera corridas para ele |
+| Prometheus | Métricas do cluster, usadas pelo Grafana |
+
+`ride-service` e `driver-service` sobem com 1 pod. O `matching-service` começa com 1 e sobe até 3 quando a CPU passa de 60%. O `routing-service` começa com 2 e sobe até 4 no mesmo critério. `make k8s-load` dispara o k6 contra o routing. `make k8s-rides` (ou `.\deploy\k8s\up.ps1 -Rides`) sobe 30 motoristas e 8 solicitantes; `DRIVERS` e `PASSENGERS` mudam esses números.

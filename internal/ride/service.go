@@ -32,6 +32,11 @@ type Service struct {
 	transMu   sync.Mutex
 	trans     map[string]int64
 
+	assignMu sync.Mutex
+	recent   []Assignment
+	byDriver map[driverKey]int64
+	assignN  int64
+
 	loopWG sync.WaitGroup
 }
 
@@ -51,6 +56,7 @@ func New(log *slog.Logger, store Store, cache Cache, bus Bus, maxAttempts int) *
 		maxAttempts: checkAttempt(maxAttempts),
 		now:         time.Now,
 		trans:       make(map[string]int64),
+		byDriver:    make(map[driverKey]int64),
 	}
 }
 
@@ -62,6 +68,11 @@ func (s *Service) RankingExhausted() int64 { return s.exhausted.Load() }
 
 // Rematches is the ride.rematch counter.
 func (s *Service) Rematches() int64 { return s.rematches.Load() }
+
+// CountByStatus is the number of distinct rides in each status.
+func (s *Service) CountByStatus(ctx context.Context) (map[string]int, error) {
+	return s.store.CountByStatus(ctx)
+}
 
 // Transitions is the ride.status_transitions counter for from→to.
 func (s *Service) Transitions(from, to string) int64 {
@@ -322,15 +333,16 @@ func (s *Service) Handle(ctx context.Context, topic string, value []byte) error 
 	}
 }
 
-// ApplyMatched reserves the first free driver of the current attempt.
-// An older attempt, a repeated delivery, or a ride that can no longer be
-// assigned is acked without a write.
+// ApplyMatched saves the ranking of the current attempt and reserves its first
+// free driver. An older attempt, a repeated delivery, or a ride that can no
+// longer be assigned is acked without a write.
 func (s *Service) ApplyMatched(ctx context.Context, m event.Matched) error {
 	if !validUUID(m.RideID) {
 		s.log.WarnContext(ctx, "matched", "ride_id", m.RideID, "event_id", m.EventID)
 		return nil
 	}
 	blocked := make(map[string]struct{})
+	saved := false
 	for range 16 {
 		ride, err := s.store.Get(ctx, m.RideID)
 		if errors.Is(err, ErrNotFound) {
@@ -346,6 +358,12 @@ func (s *Service) ApplyMatched(ctx context.Context, m event.Matched) error {
 		}
 		if plan.Ignore {
 			return nil
+		}
+		if !saved {
+			if err := s.store.SaveRanking(ctx, m); err != nil {
+				return err
+			}
+			saved = true
 		}
 		held := false
 		if plan.AssignDriver != "" {
@@ -506,7 +524,8 @@ func (s *Service) after(ctx context.Context, from Ride, plan Plan) {
 		s.log.InfoContext(ctx, "ride.status_transitions",
 			"from", from.Status, "to", plan.Next.Status, "ride_id", from.ID, "trace_id", from.TraceID, "event_id", eventID)
 	}
-	if plan.Next.Status == StatusAssigned {
+	if plan.Next.Status == StatusAssigned && from.Status != StatusAssigned {
+		s.noteAssigned(plan.Next)
 		s.log.InfoContext(ctx, "ride.time_to_assign_ms",
 			"ride_id", from.ID, "trace_id", from.TraceID, "ms", s.now().Sub(from.RequestedAt).Milliseconds())
 	}

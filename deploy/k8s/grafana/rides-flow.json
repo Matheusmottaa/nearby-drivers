@@ -1,0 +1,99 @@
+{
+  "uid": "rides-flow",
+  "title": "nearby-drivers - corridas",
+  "tags": ["nearby-drivers", "rides"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "editable": false,
+  "graphTooltip": 0,
+  "refresh": "5s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Corridas",
+      "description": "Uma linha por corrida pedida no intervalo, da mais recente para a mais antiga. Caso é o desfecho lido agora de ride.rides e ride.rankings. Sucesso é o solicitante com motorista: o 1º do ranking, outro do ranking (o anterior já estava em outra corrida) ou um rematch. Sem motorista cobre ranking esgotado, ninguém por perto, rematch sem candidato e tentativas esgotadas. Cancelada pode ser antes do ranking ou depois de ter motorista. Buscando e rematch em andamento ainda não fecharam. Candidatos é o ranking da tentativa atual, na ordem do matching. Atribuído só aparece em DRIVER_ASSIGNED.",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 22 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ride" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ride" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  r.requested_at AS \"Pedido em\",\n  CASE\n    WHEN r.status = 'DRIVER_ASSIGNED' AND r.attempt > 1 THEN 'Sucesso: rematch'\n    WHEN r.status = 'DRIVER_ASSIGNED' AND c.assigned_pos = 1 THEN 'Sucesso: 1º do ranking'\n    WHEN r.status = 'DRIVER_ASSIGNED' THEN 'Sucesso: outro do ranking'\n    WHEN r.status = 'NO_DRIVER_AVAILABLE' AND cardinality(r.excluded_driver_ids) > 0 AND COALESCE(c.lines, '') <> '' THEN 'Sem motorista: tentativas esgotadas'\n    WHEN r.status = 'NO_DRIVER_AVAILABLE' AND cardinality(r.excluded_driver_ids) > 0 THEN 'Sem motorista: rematch sem candidato'\n    WHEN r.status = 'NO_DRIVER_AVAILABLE' AND COALESCE(c.lines, '') <> '' THEN 'Sem motorista: ranking esgotado'\n    WHEN r.status = 'NO_DRIVER_AVAILABLE' THEN 'Sem motorista: ninguém por perto'\n    WHEN r.status = 'CANCELLED' AND c.lines IS NOT NULL THEN 'Cancelada com motorista'\n    WHEN r.status = 'CANCELLED' THEN 'Cancelada antes do ranking'\n    WHEN r.status = 'MATCHING' AND r.attempt > 1 THEN 'Rematch em andamento'\n    ELSE 'Buscando'\n  END AS \"Caso\",\n  r.passenger_id::text AS \"Solicitante\",\n  r.id::text AS \"Corrida\",\n  r.status AS \"Status\",\n  r.attempt AS \"Attempt\",\n  COALESCE(c.lines, '') AS \"Candidatos\",\n  CASE WHEN r.status = 'DRIVER_ASSIGNED' THEN r.assigned_driver_id::text ELSE '' END AS \"Atribuido\",\n  CASE WHEN r.status = 'DRIVER_ASSIGNED' THEN c.assigned_pos END AS \"Posicao do atribuido\"\nFROM ride.rides r\nLEFT JOIN LATERAL (\n  SELECT\n    string_agg(\n      format('%s. %s  eta %s s  %s m%s',\n        e.pos, e.c->>'driver_id', e.c->>'eta_s', e.c->>'distance_m',\n        CASE WHEN r.status = 'DRIVER_ASSIGNED' AND e.c->>'driver_id' = r.assigned_driver_id::text THEN '  <- atribuido' ELSE '' END),\n      E'\\n' ORDER BY e.pos) AS lines,\n    min(e.pos) FILTER (WHERE e.c->>'driver_id' = r.assigned_driver_id::text) AS assigned_pos\n  FROM ride.rankings k\n  CROSS JOIN LATERAL jsonb_array_elements(k.candidates) WITH ORDINALITY AS e(c, pos)\n  WHERE k.ride_id = r.id AND k.attempt = r.attempt\n) c ON true\nWHERE $__timeFilter(r.requested_at)\nORDER BY r.requested_at DESC\nLIMIT 200"
+        }
+      ],
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "left", "cellOptions": { "type": "auto" }, "inspect": true },
+          "noValue": ""
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Pedido em" }, "properties": [{ "id": "unit", "value": "dateTimeAsLocal" }, { "id": "custom.width", "value": 170 }] },
+          {
+            "matcher": { "id": "byName", "options": "Caso" },
+            "properties": [
+              { "id": "custom.width", "value": 320 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Sucesso: 1º do ranking": { "index": 0, "color": "green" },
+                      "Sucesso: outro do ranking": { "index": 1, "color": "#37872D" },
+                      "Sucesso: rematch": { "index": 2, "color": "#73BF69" },
+                      "Sem motorista: ranking esgotado": { "index": 3, "color": "orange" },
+                      "Sem motorista: ninguém por perto": { "index": 4, "color": "red" },
+                      "Sem motorista: rematch sem candidato": { "index": 5, "color": "#FF780A" },
+                      "Sem motorista: tentativas esgotadas": { "index": 6, "color": "#C4162A" },
+                      "Cancelada antes do ranking": { "index": 7, "color": "#8e8e8e" },
+                      "Cancelada com motorista": { "index": 8, "color": "purple" },
+                      "Rematch em andamento": { "index": 9, "color": "yellow" },
+                      "Buscando": { "index": 10, "color": "blue" }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "Solicitante" }, "properties": [{ "id": "custom.width", "value": 300 }] },
+          { "matcher": { "id": "byName", "options": "Corrida" }, "properties": [{ "id": "custom.width", "value": 300 }] },
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.width", "value": 190 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "REQUESTED": { "index": 0, "color": "blue" },
+                      "MATCHING": { "index": 1, "color": "yellow" },
+                      "DRIVER_ASSIGNED": { "index": 2, "color": "green" },
+                      "NO_DRIVER_AVAILABLE": { "index": 3, "color": "red" },
+                      "CANCELLED": { "index": 4, "color": "#8e8e8e" }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "Attempt" }, "properties": [{ "id": "custom.width", "value": 80 }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Candidatos" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "auto", "wrapText": true } }, { "id": "custom.minWidth", "value": 520 }] },
+          { "matcher": { "id": "byName", "options": "Atribuido" }, "properties": [{ "id": "custom.width", "value": 300 }, { "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "Posicao do atribuido" }, "properties": [{ "id": "custom.width", "value": 110 }, { "id": "decimals", "value": 0 }] }
+        ]
+      }
+    }
+  ]
+}

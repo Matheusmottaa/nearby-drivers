@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
+
+	"github.com/Matheusmottaa/nearby-drivers/internal/event"
 )
 
 var errCacheDown = errors.New("redis unavailable")
@@ -13,11 +16,18 @@ var errCacheDown = errors.New("redis unavailable")
 // Memory is an in-memory Store. Tests use it as the ride schema.
 // A published row can be rewound so the publisher sends the same event_id again.
 type Memory struct {
-	mu   sync.Mutex
-	now  func() time.Time
-	ride map[string]Ride
-	box  []memEvent
-	keys map[string]memKey
+	mu      sync.Mutex
+	now     func() time.Time
+	ride    map[string]Ride
+	box     []memEvent
+	keys    map[string]memKey
+	ranks   map[rankKey]event.Matched
+	rankErr error
+}
+
+type rankKey struct {
+	rideID  string
+	attempt int
 }
 
 type memEvent struct {
@@ -36,10 +46,37 @@ type memKey struct {
 // NewMemory returns an empty store.
 func NewMemory() *Memory {
 	return &Memory{
-		now:  time.Now,
-		ride: make(map[string]Ride),
-		keys: make(map[string]memKey),
+		now:   time.Now,
+		ride:  make(map[string]Ride),
+		keys:  make(map[string]memKey),
+		ranks: make(map[rankKey]event.Matched),
 	}
+}
+
+func (m *Memory) SaveRanking(_ context.Context, ev event.Matched) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rankErr != nil {
+		return m.rankErr
+	}
+	ev.Ranking = slices.Clone(ev.Ranking)
+	m.ranks[rankKey{rideID: ev.RideID, attempt: ev.Attempt}] = ev
+	return nil
+}
+
+// ranking returns the stored ranking of one attempt.
+func (m *Memory) ranking(rideID string, attempt int) (event.Matched, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ev, ok := m.ranks[rankKey{rideID: rideID, attempt: attempt}]
+	return ev, ok
+}
+
+// failRankings makes SaveRanking return err until it is called with nil.
+func (m *Memory) failRankings(err error) {
+	m.mu.Lock()
+	m.rankErr = err
+	m.mu.Unlock()
 }
 
 func (m *Memory) InsertNew(_ context.Context, key string, hash []byte, ride Ride, ev OutboxEvent) (Ride, bool, error) {
@@ -139,6 +176,16 @@ func (m *Memory) PublishPending(_ context.Context, limit int, publish func(Pendi
 		became = append(became, ride.ID)
 	}
 	return became, nil
+}
+
+func (m *Memory) CountByStatus(_ context.Context) (map[string]int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	counts := make(map[string]int)
+	for _, ride := range m.ride {
+		counts[ride.Status]++
+	}
+	return counts, nil
 }
 
 func (m *Memory) OutboxStats(_ context.Context) (int, time.Duration, error) {

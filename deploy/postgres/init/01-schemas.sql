@@ -12,3 +12,9 @@ CREATE USER driver WITH PASSWORD 'driver';
 CREATE SCHEMA driver AUTHORIZATION driver;
 ALTER ROLE driver SET search_path TO driver;
 REVOKE ALL ON SCHEMA driver FROM PUBLIC;
+
+-- Leitura do painel de corridas no Grafana. Só SELECT nas tabelas que o ride criar no schema ride.
+CREATE USER grafana WITH PASSWORD 'grafana';
+GRANT USAGE ON SCHEMA ride TO grafana;
+ALTER DEFAULT PRIVILEGES FOR ROLE ride IN SCHEMA ride GRANT SELECT ON TABLES TO grafana;
+ALTER ROLE grafana SET default_transaction_read_only = on;

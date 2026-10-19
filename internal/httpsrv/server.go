@@ -22,11 +22,14 @@ import (
 type Gate struct {
 	ready atomic.Bool
 	mux   *http.ServeMux
+	hits  *httpStats
+	extra func(io.Writer)
 }
 
 // NewGate serves /healthz and /readyz. Readiness starts closed.
 func NewGate() *Gate {
-	g := &Gate{mux: http.NewServeMux()}
+	g := &Gate{mux: http.NewServeMux(), hits: newHTTPStats()}
+	g.mux.HandleFunc("GET /metrics", g.metrics)
 	g.mux.HandleFunc("/healthz", g.healthz)
 	g.mux.HandleFunc("/readyz", g.readyz)
 	g.mux.HandleFunc("/", notFound)
@@ -44,9 +47,23 @@ func (g *Gate) SetReady(ready bool) {
 	g.ready.Store(ready)
 }
 
-// Handler is the HTTP handler of the gate.
+// SetExtraMetrics appends process-specific counters to GET /metrics.
+func (g *Gate) SetExtraMetrics(fn func(io.Writer)) {
+	g.extra = fn
+}
+
+// Handler is the HTTP handler of the gate. It counts requests other than the probes.
 func (g *Gate) Handler() http.Handler {
-	return g.mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
+		g.mux.ServeHTTP(rec, r)
+		route := strings.TrimPrefix(r.Pattern, r.Method+" ")
+		switch route {
+		case "", "/metrics", "/healthz", "/readyz":
+			return
+		}
+		g.hits.add(r.Method, route, rec.code)
+	})
 }
 
 func (g *Gate) healthz(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +84,14 @@ func (g *Gate) readyz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeText(w, http.StatusOK, "ok\n")
+}
+
+func (g *Gate) metrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	g.hits.write(w)
+	if g.extra != nil {
+		g.extra(w)
+	}
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {

@@ -22,17 +22,18 @@ O que já está marcado como feito está em [checklist.md](checklist.md).
 | Peça | Estado |
 | --- | --- |
 | Postgres 17, schemas `ride` e `driver`, usuários separados | pronto em `deploy/postgres/init` |
-| Redis só com TTL, sem RDB e sem AOF | pronto no `docker-compose.yml` |
+| Redis só com TTL, sem RDB e sem AOF | contrato do `driver` e do `ride`; o cluster sobe só o routing |
 | Kafka KRaft e os sete tópicos, com a retenção de cada um | pronto em `deploy/kafka/create-topics.sh` |
 | Dockerfiles dos quatro serviços | prontos, apontam para `cmd/` |
 | Tabelas `ride` e `driver` | prontas em `internal/ride/sql` e `internal/driver/sql` |
-| nginx | pronto em `deploy/nginx`, no compose. O passageiro entra em `:8080`; routing em `nginx:8081` |
+| nginx | config em `deploy/nginx`. No cluster o passageiro fala direto com o Service `routing` |
 | Arquivo de grafo | `data/maps/graph.txt`, volume em `/data/maps` |
 | Binários | `cmd/` dos quatro serviços. Saúde no ar; regra de negócio nas etapas abaixo |
 
-Subir `docker compose up` e ver os healthchecks de Postgres, Redis e Kafka
-verdes é o pré-requisito das etapas 4, 5 e 6. O mesmo compose sobe o nginx e
-os quatro binários. A etapa 2 não precisa de container.
+O cluster sobe com `make k8s-up`: ride e driver com 1 pod, matching de 1 a 3,
+routing de 2 a 4, Postgres, Redis, Kafka, Prometheus e Grafana em
+http://localhost:30300. `make k8s-load` dispara o k6. A etapa 2 não precisa
+de container.
 
 ## Ordem
 

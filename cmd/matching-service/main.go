@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -29,8 +30,10 @@ func main() {
 
 	// /readyz exige o broker. Redis fora do ar não segura o processo.
 	gate := httpsrv.NewGate()
+	probe := &matching.Probe{}
+	gate.SetExtraMetrics(func(w io.Writer) { probe.Write(w) })
 	go boot.Supervise(ctx, log, gate, true, time.Second, func(ctx context.Context) (func(), error) {
-		return open(ctx, log, cfg)
+		return open(ctx, log, cfg, probe)
 	})
 
 	log.Info("starting",
@@ -48,7 +51,7 @@ func main() {
 	}
 }
 
-func open(ctx context.Context, log *slog.Logger, cfg config) (func(), error) {
+func open(ctx context.Context, log *slog.Logger, cfg config, probe *matching.Probe) (func(), error) {
 	connCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -68,13 +71,15 @@ func open(ctx context.Context, log *slog.Logger, cfg config) (func(), error) {
 
 	bus := matching.NewKafka(cl, cfg.KafkaBrokers, log)
 	opt := matching.DefaultClientOptions()
+	routing := matching.NewETAClient(cfg.RoutingURL, opt)
 	svc := matching.New(log,
 		matching.NewNearbyClient(cfg.DriverURL, opt),
-		matching.NewETAClient(cfg.RoutingURL, opt),
+		routing,
 		dedup,
 		bus,
 		matching.Options{K: cfg.MatchK, RadiusM: cfg.RadiusM, SpeedMPS: cfg.SpeedMPS},
 	)
+	probe.Set(svc, routing)
 	svc.UseKafka(bus)
 	loopCtx, loopCancel := context.WithCancel(ctx)
 	svc.Loop(loopCtx)

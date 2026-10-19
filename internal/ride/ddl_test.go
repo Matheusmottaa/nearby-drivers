@@ -18,3 +18,16 @@ func TestDDLRunsAsRideUser(t *testing.T) {
 		}
 	}
 }
+
+func TestRankingsDDLRunsAsRideUser(t *testing.T) {
+	for _, part := range []string{
+		"SET ROLE ride;",
+		"current_user <> 'ride'",
+		"CREATE TABLE rankings",
+		"PRIMARY KEY (ride_id, attempt)",
+	} {
+		if !strings.Contains(rankingsDDL, part) {
+			t.Fatalf("rankings DDL missing %q", part)
+		}
+	}
+}

@@ -1,0 +1,233 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ride
+  labels:
+    app: ride
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ride
+  template:
+    metadata:
+      labels:
+        app: ride
+    spec:
+      containers:
+        - name: ride
+          image: nearby-drivers/ride-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: HTTP_ADDR
+              value: ":8080"
+            - name: DATABASE_URL
+              value: postgres://ride:ride@postgres:5432/nearby?sslmode=disable
+            - name: REDIS_URL
+              value: redis://redis:6379
+            - name: KAFKA_BROKERS
+              value: kafka:9092
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ride
+  labels:
+    app: ride
+spec:
+  selector:
+    app: ride
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: driver
+  labels:
+    app: driver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: driver
+  template:
+    metadata:
+      labels:
+        app: driver
+    spec:
+      containers:
+        - name: driver
+          image: nearby-drivers/driver-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: HTTP_ADDR
+              value: ":8080"
+            - name: DATABASE_URL
+              value: postgres://driver:driver@postgres:5432/nearby?sslmode=disable
+            - name: REDIS_URL
+              value: redis://redis:6379
+            - name: KAFKA_BROKERS
+              value: kafka:9092
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: driver
+  labels:
+    app: driver
+spec:
+  selector:
+    app: driver
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matching
+  labels:
+    app: matching
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matching
+  template:
+    metadata:
+      labels:
+        app: matching
+    spec:
+      containers:
+        - name: matching
+          image: nearby-drivers/matching-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: HTTP_ADDR
+              value: ":8080"
+            - name: REDIS_URL
+              value: redis://redis:6379
+            - name: KAFKA_BROKERS
+              value: kafka:9092
+            - name: DRIVER_URL
+              value: http://driver:8080
+            - name: ROUTING_URL
+              value: http://routing:8080
+            - name: GOMAXPROCS
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: "1"
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matching
+  labels:
+    app: matching
+spec:
+  selector:
+    app: matching
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: matching
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: matching
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      selectPolicy: Max
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 15

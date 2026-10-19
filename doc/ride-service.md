@@ -15,9 +15,10 @@ Roda em **1 instância** atrás do nginx. O estado está no PostgreSQL.
    corrida em `REQUESTED` junto com o evento na outbox, na mesma transação.
    Responde `202` sem esperar motorista.
 2. Um publisher interno lê a outbox e publica `rides.requested` no Kafka.
-3. Consome `rides.matched`, reserva o primeiro motorista livre do ranking e
-   passa a corrida para `DRIVER_ASSIGNED`, gravando o ETA que veio no ranking.
-   Publica `rides.assigned`.
+3. Consome `rides.matched`, grava o ranking da tentativa em `rankings`,
+   reserva o primeiro motorista livre e passa a corrida para
+   `DRIVER_ASSIGNED`, gravando o ETA que veio no ranking. Publica
+   `rides.assigned`.
 4. Consome `rides.match-failed` e passa para `NO_DRIVER_AVAILABLE`.
 5. Consome `drivers.presence` (`lost`): volta a corrida para `MATCHING`,
    publica `rides.released` e um novo `rides.requested` sem aquele motorista.
@@ -166,6 +167,7 @@ Schema `ride`, usuário com `GRANT` só nesse schema.
 erDiagram
     RIDES ||--o{ OUTBOX : "mesma transação"
     IDEMPOTENCY_KEYS }o--|| RIDES : "aponta para"
+    RIDES ||--o{ RANKINGS : "uma por tentativa"
 
     RIDES {
         uuid id PK
@@ -202,7 +204,21 @@ erDiagram
         uuid ride_id
         timestamptz created_at
     }
+
+    RANKINGS {
+        uuid ride_id PK
+        int attempt PK
+        text event_id "rides.matched aplicado"
+        text engine
+        jsonb candidates "ranking na ordem do matching"
+        timestamptz received_at
+    }
 ```
+
+`rankings` existe para o painel "nearby-drivers - corridas" do Grafana, que lê
+`rides` e `rankings` com o usuário `grafana` (só `SELECT`). A atribuição não lê
+essa tabela. Um `rides.matched` ignorado (tentativa antiga, corrida cancelada ou
+já atribuída) não é gravado.
 
 Índices que existem por correção:
 

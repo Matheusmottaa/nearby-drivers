@@ -52,6 +52,13 @@ func (b *Breaker) Allow() bool {
 	}
 }
 
+// State reports closed, open or half-open.
+func (b *Breaker) State() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.state
+}
+
 // Success closes the breaker.
 func (b *Breaker) Success() {
 	b.mu.Lock()

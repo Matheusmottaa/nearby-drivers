@@ -43,11 +43,14 @@ type Service struct {
 	radius float64
 	speed  float64
 
-	candidates  atomic.Int64
-	unreachable atomic.Int64
-	fallback    atomic.Int64
-	failed      atomic.Int64
-	duplicates  atomic.Int64
+	candidates          atomic.Int64
+	unreachable         atomic.Int64
+	fallback            atomic.Int64
+	dijkstra            atomic.Int64
+	failed              atomic.Int64
+	failedNoCandidate   atomic.Int64
+	failedNoneReachable atomic.Int64
+	duplicates          atomic.Int64
 
 	loopWG sync.WaitGroup
 }
@@ -116,6 +119,28 @@ func (s *Service) Loop(ctx context.Context) {
 
 // Wait blocks until Loop has finished.
 func (s *Service) Wait() { s.loopWG.Wait() }
+
+// Counters is the in-process view of the matching telemetry contract.
+type Counters struct {
+	Dijkstra            int64
+	Fallback            int64
+	Unreachable         int64
+	Duplicates          int64
+	FailedNoCandidate   int64
+	FailedNoneReachable int64
+}
+
+// Counters returns the current totals. Safe to call while Match runs.
+func (s *Service) Counters() Counters {
+	return Counters{
+		Dijkstra:            s.dijkstra.Load(),
+		Fallback:            s.fallback.Load(),
+		Unreachable:         s.unreachable.Load(),
+		Duplicates:          s.duplicates.Load(),
+		FailedNoCandidate:   s.failedNoCandidate.Load(),
+		FailedNoneReachable: s.failedNoneReachable.Load(),
+	}
+}
 
 // Handle processes one record. A nil error is the signal to ack.
 // A failed publish returns an error and leaves the record uncommitted.
@@ -238,6 +263,9 @@ func (s *Service) rank(ctx context.Context, req event.Requested, pickup geo.Poin
 			"count", dropped, "unreachable_total", s.unreachable.Load(),
 			"trace_id", req.TraceID, "event_id", req.EventID, "ride_id", req.RideID)
 	}
+	if len(ranked) > 0 {
+		s.dijkstra.Add(1)
+	}
 	sortRanking(ranked)
 	s.log.InfoContext(ctx, "matching.duration_ms",
 		"stage", "eta", "duration_ms", etaMS, "engine", event.EngineDijkstra,
@@ -301,6 +329,12 @@ func (s *Service) publishMatched(ctx context.Context, req event.Requested, engin
 
 func (s *Service) fail(ctx context.Context, req event.Requested, reason string) error {
 	s.failed.Add(1)
+	switch reason {
+	case event.ReasonNoCandidate:
+		s.failedNoCandidate.Add(1)
+	case event.ReasonNoneReachable:
+		s.failedNoneReachable.Add(1)
+	}
 	s.log.InfoContext(ctx, "matching.failed",
 		"reason", reason, "failed_total", s.failed.Load(),
 		"trace_id", req.TraceID, "event_id", req.EventID, "ride_id", req.RideID)

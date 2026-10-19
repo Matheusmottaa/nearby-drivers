@@ -34,6 +34,17 @@ func newServer(log *slog.Logger) *server {
 func (s *server) bind(svc *ride.Service) { s.svc.Store(svc) }
 
 func (s *server) register(gate *httpsrv.Gate) {
+	gate.SetExtraMetrics(func(w io.Writer) {
+		var snap ride.Snapshot
+		var counts map[string]int
+		if svc := s.svc.Load(); svc != nil {
+			snap = svc.Snapshot()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			counts, _ = svc.CountByStatus(ctx)
+			cancel()
+		}
+		_ = ride.WriteMetrics(w, snap, counts)
+	})
 	gate.Handle("/rides/{id}/events", http.HandlerFunc(s.events))
 	gate.Handle("/rides/{id}/cancel", http.HandlerFunc(s.cancel))
 	gate.Handle("/rides/{id}", http.HandlerFunc(s.get))

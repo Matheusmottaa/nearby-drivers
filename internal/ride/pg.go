@@ -208,6 +208,31 @@ func (p *Postgres) Commit(ctx context.Context, fromVersion int, next Ride, event
 	})
 }
 
+func (p *Postgres) SaveRanking(ctx context.Context, m event.Matched) error {
+	ranking := m.Ranking
+	if ranking == nil {
+		ranking = []event.Candidate{}
+	}
+	raw, err := event.Encode(ranking)
+	if err != nil {
+		return err
+	}
+	_, err = p.pool.Exec(ctx, `
+		INSERT INTO rankings (ride_id, attempt, event_id, engine, candidates)
+		VALUES ($1::uuid, $2, $3, $4, $5::jsonb)
+		ON CONFLICT (ride_id, attempt) DO UPDATE SET
+			event_id = EXCLUDED.event_id,
+			engine = EXCLUDED.engine,
+			candidates = EXCLUDED.candidates,
+			received_at = now()`,
+		m.RideID, m.Attempt, m.EventID, m.Engine, raw,
+	)
+	if err != nil {
+		return fmt.Errorf("save ranking %s attempt %d: %w", m.RideID, m.Attempt, err)
+	}
+	return nil
+}
+
 func nullableInt(set bool, n int) any {
 	if !set {
 		return nil
@@ -293,6 +318,24 @@ func (p *Postgres) PublishPending(ctx context.Context, limit int, publish func(P
 		return nil, err
 	}
 	return became, nil
+}
+
+func (p *Postgres) CountByStatus(ctx context.Context) (map[string]int, error) {
+	rows, err := p.pool.Query(ctx, `SELECT status, COUNT(*)::int FROM rides GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := make(map[string]int)
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, err
+		}
+		counts[status] = n
+	}
+	return counts, rows.Err()
 }
 
 func (p *Postgres) OutboxStats(ctx context.Context) (int, time.Duration, error) {

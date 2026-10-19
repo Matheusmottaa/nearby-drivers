@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/matchin
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/matching-service /matching-service
 
-# Só /healthz e /readyz; não fica atrás do nginx público
+# /healthz, /readyz e /metrics; não fica atrás do nginx público
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/matching-service"]

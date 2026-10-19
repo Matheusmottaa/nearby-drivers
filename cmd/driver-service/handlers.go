@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -31,6 +32,13 @@ func newServer(log *slog.Logger) *server {
 func (s *server) bind(svc *driver.Service) { s.svc.Store(svc) }
 
 func (s *server) register(gate *httpsrv.Gate) {
+	gate.SetExtraMetrics(func(w io.Writer) {
+		var available int
+		if svc := s.svc.Load(); svc != nil {
+			available = svc.AvailableDrivers()
+		}
+		_ = driver.WriteMetrics(w, available)
+	})
 	gate.Handle("/drivers/nearby", http.HandlerFunc(s.nearby))
 	gate.Handle("/drivers/{id}/status", http.HandlerFunc(s.patchStatus))
 	gate.Handle("/drivers/{id}/location", http.HandlerFunc(s.putLocation))

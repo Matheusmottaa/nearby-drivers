@@ -5,7 +5,7 @@ BIN_DIR := bin
 K8S_NS := nearby-drivers
 METRICS_SERVER_URL := https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
 
-.PHONY: help build test vet fmt tidy clean docker-build etapa7 k8s-check k8s-up k8s-load k8s-down $(addprefix build-,$(SERVICES)) $(addprefix docker-build-,$(SERVICES)) $(addprefix run-,$(SERVICES))
+.PHONY: help build test vet fmt tidy clean docker-build k8s-check k8s-up k8s-load k8s-rides k8s-down $(addprefix build-,$(SERVICES)) $(addprefix docker-build-,$(SERVICES)) $(addprefix run-,$(SERVICES))
 
 help:
 	@echo "build                  compila os 4 serviços em $(BIN_DIR)/"
@@ -15,9 +15,9 @@ help:
 	@echo "vet | fmt | tidy       verificações e manutenção do módulo"
 	@echo "docker-build           gera as 4 imagens"
 	@echo "docker-build-<serviço> gera a imagem de um serviço"
-	@echo "etapa7                 sobe o compose e percorre o roteiro da etapa 7"
-	@echo "k8s-up                 routing + HPA + Grafana no Kubernetes do Docker Desktop"
+	@echo "k8s-up                 ride, driver, matching, routing + Grafana no Kubernetes"
 	@echo "k8s-load               roda o Job do k6 contra o routing no cluster"
+	@echo "k8s-rides              k6 com DRIVERS motoristas e PASSENGERS solicitantes (30 e 8)"
 	@echo "k8s-down               remove o namespace $(K8S_NS)"
 	@echo "clean                  remove $(BIN_DIR)/"
 
@@ -46,9 +46,6 @@ docker-build: $(addprefix docker-build-,$(SERVICES))
 $(addprefix docker-build-,$(SERVICES)): docker-build-%:
 	docker build -f deploy/$*/Dockerfile -t $(IMAGE_PREFIX)/$*:$(TAG) .
 
-etapa7:
-	go run ./scripts/etapa7
-
 k8s-check:
 	@test "$$(kubectl config current-context)" = docker-desktop || \
 		{ echo "kubectl precisa do contexto docker-desktop: kubectl config use-context docker-desktop"; exit 1; }
@@ -61,11 +58,12 @@ k8s-check:
 		for i in $$(seq 24); do kubectl top nodes >/dev/null 2>&1 && break; sleep 5; done; \
 		kubectl top nodes >/dev/null; }
 
-k8s-up: k8s-check docker-build-routing-service
+k8s-up: k8s-check docker-build
+	kubectl delete job kafka-init -n $(K8S_NS) --ignore-not-found --wait=true
 	kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/k8s | kubectl apply -f -
-	kubectl rollout restart deployment/routing -n $(K8S_NS)
-	for d in routing kube-state-metrics prometheus grafana; do \
-		kubectl rollout status deployment/$$d -n $(K8S_NS) --timeout=180s || exit 1; done
+	kubectl rollout restart deployment/ride deployment/driver deployment/matching deployment/routing -n $(K8S_NS)
+	for d in postgres redis kafka ride driver matching routing kube-state-metrics prometheus grafana; do \
+		kubectl rollout status deployment/$$d -n $(K8S_NS) --timeout=300s || exit 1; done
 	@echo "Grafana: http://localhost:30300 (admin / admin)"
 
 k8s-load: k8s-check
@@ -73,6 +71,19 @@ k8s-load: k8s-check
 	kubectl apply -k deploy/k6
 	kubectl wait --for=condition=Ready pod -l job-name=k6-eta-batch -n $(K8S_NS) --timeout=120s
 	kubectl logs -f job/k6-eta-batch -n $(K8S_NS)
+
+DRIVERS ?= 30
+PASSENGERS ?= 8
+HOLD ?= 3m
+
+k8s-rides: k8s-check
+	kubectl delete job k6-rides -n $(K8S_NS) --ignore-not-found --wait=true
+	kubectl kustomize deploy/k6-rides | sed \
+		-e '/name: DRIVERS/{n;s/value: .*/value: "$(DRIVERS)"/;}' \
+		-e '/name: PASSENGERS/{n;s/value: .*/value: "$(PASSENGERS)"/;}' \
+		-e '/name: HOLD/{n;s/value: .*/value: "$(HOLD)"/;}' | kubectl apply -f -
+	kubectl wait --for=condition=Ready pod -l job-name=k6-rides -n $(K8S_NS) --timeout=180s
+	kubectl logs -f job/k6-rides -n $(K8S_NS)
 
 k8s-down:
 	kubectl delete namespace $(K8S_NS) --ignore-not-found

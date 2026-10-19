@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-rides
+  labels:
+    app: k6-rides
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: k6-rides
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          args: ["run", "--no-usage-report", "-o", "experimental-prometheus-rw", "/scripts/rides.js"]
+          env:
+            - name: RIDE_URL
+              value: http://ride:8080
+            - name: DRIVER_URL
+              value: http://driver:8080
+            - name: DRIVERS
+              value: "30"
+            - name: PASSENGERS
+              value: "8"
+            - name: HOLD
+              value: "3m"
+            - name: HEARTBEAT_S
+              value: "5"
+            - name: ASSIGNED_HOLD_S
+              value: "10"
+            - name: K6_PROMETHEUS_RW_SERVER_URL
+              value: http://prometheus:9090/api/v1/write
+            - name: K6_PROMETHEUS_RW_PUSH_INTERVAL
+              value: 5s
+            - name: K6_PROMETHEUS_RW_TREND_STATS
+              value: p(95),med
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-rides-scripts

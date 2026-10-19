@@ -7,7 +7,11 @@ namespace: nearby-drivers
 
 resources:
   - namespace.yaml
+  - postgres.yaml
+  - redis.yaml
+  - kafka.yaml
   - routing.yaml
+  - apps.yaml
   - kube-state-metrics.yaml
   - prometheus.yaml
   - grafana.yaml
@@ -16,6 +20,12 @@ configMapGenerator:
   - name: routing-graph
     files:
       - graph.txt=../../data/maps/graph.txt
+  - name: postgres-init
+    files:
+      - 01-schemas.sql=../postgres/init/01-schemas.sql
+  - name: kafka-topics
+    files:
+      - create-topics.sh=../kafka/create-topics.sh
   - name: prometheus-config
     files:
       - prometheus/prometheus.yml
@@ -28,3 +38,4 @@ configMapGenerator:
   - name: grafana-dashboards
     files:
       - grafana/routing-hpa.json
+      - grafana/rides-flow.json

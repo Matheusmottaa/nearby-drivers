@@ -19,6 +19,9 @@ func TestBreakerOpensAndProbes(t *testing.T) {
 		t.Fatal("breaker opened before the fifth failure")
 	}
 	b.Failure()
+	if b.State() != breakerOpen {
+		t.Fatal("fifth failure did not open the breaker")
+	}
 	if b.Allow() {
 		t.Fatal("breaker stayed closed after five failures")
 	}
@@ -26,6 +29,9 @@ func TestBreakerOpensAndProbes(t *testing.T) {
 	now = now.Add(breakerCooldown)
 	if !b.Allow() {
 		t.Fatal("half-open probe was refused")
+	}
+	if b.State() != breakerHalf {
+		t.Fatal("probe did not leave the breaker half-open")
 	}
 	if b.Allow() {
 		t.Fatal("a second call was admitted while the probe was in flight")
@@ -40,6 +46,9 @@ func TestBreakerOpensAndProbes(t *testing.T) {
 		t.Fatal("probe after the second cooldown was refused")
 	}
 	b.Success()
+	if b.State() != breakerClosed {
+		t.Fatal("success did not close the breaker")
+	}
 	if !b.Allow() {
 		t.Fatal("success did not close the breaker")
 	}
