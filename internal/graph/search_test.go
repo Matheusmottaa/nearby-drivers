@@ -91,7 +91,7 @@ func TestETA(t *testing.T) {
 				{OriginIndex: 5, DurationS: 80, DistanceM: 100, Reachable: true},
 				{OriginIndex: 6, DurationS: 10, DistanceM: 500, Reachable: true},
 			},
-			wantVisited: 5,
+			wantVisited: 17,
 		},
 	}
 	for _, tt := range tests {

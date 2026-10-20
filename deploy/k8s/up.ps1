@@ -133,6 +133,7 @@ function Start-Cluster {
     Write-Host ''
     Write-Host 'Grafana: http://localhost:30300  (admin / admin; o dashboard abre como página inicial)'
     Write-Host 'Corridas: http://localhost:30300/d/rides-flow  |  gerar corridas: .\deploy\k8s\ride-demo.ps1'
+    Write-Host 'Falha:   http://localhost:30300/d/resilience  |  .\deploy\k8s\failure.ps1'
     Write-Host 'Carga:   .\deploy\k8s\up.ps1 -Load'
     Write-Host 'Corridas k6: .\deploy\k8s\up.ps1 -Rides -Drivers 30 -Passengers 8'
     Write-Host "Acompanhe: kubectl get hpa -n $Namespace -w   |   kubectl get pods -n $Namespace -w"
@@ -144,10 +145,14 @@ function Set-JobEnv {
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Value
     )
-    $pattern = "(?m)(name: $Name\r?\n\s+value: ).*"
-    $updated = [regex]::Replace($Yaml, $pattern, "`${1}`"$Value`"", 1)
-    if ($updated -eq $Yaml) { throw "não achei env $Name no Job do k6" }
-    return $updated
+    # O valor default do Job já é o do parâmetro. Comparar o YAML inteiro
+    # acusava "não achei" quando a troca não alterava o texto.
+    $pattern = "(?m)(^[ \t]*-[ \t]*name: $([regex]::Escape($Name))\r?\n[ \t]+value:[ \t]*).*$"
+    if (-not [regex]::IsMatch($Yaml, $pattern)) {
+        throw "não achei env $Name no Job do k6"
+    }
+    $quoted = '"' + $Value + '"'
+    return [regex]::Replace($Yaml, $pattern, { param($m) $m.Groups[1].Value + $quoted }.GetNewClosure())
 }
 
 function Start-Rides {

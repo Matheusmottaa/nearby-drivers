@@ -1,0 +1,260 @@
+{
+  "uid": "resilience",
+  "title": "nearby-drivers - falha do routing",
+  "tags": ["nearby-drivers", "resilience"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "transparent": true,
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Teste:** `deploy/k8s/failure.ps1` sobe uma corrida com o routing no ar (`dijkstra-one-to-many`), remove o HPA, escala o routing para 0 e pede outra corrida (`haversine-fallback`). Depois recria o HPA, espera 2 pods e pede uma terceira corrida, de novo no grafo. Ride, driver e matching ficam no ar o tempo todo."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "routing pronto",
+      "description": "Pods do routing com /readyz 200. O teste deixa isto em 0 e depois volta para 2.",
+      "gridPos": { "x": 0, "y": 3, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"routing\"}) or vector(0)" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 2 }] } } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "HPA do routing",
+      "description": "Mínimo de réplicas do autoscaler. Some (0) quando o teste apaga o HPA, para ele não recriar os pods. Volta para 2 no fim.",
+      "gridPos": { "x": 4, "y": 3, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "max(kube_horizontalpodautoscaler_spec_min_replicas{namespace=\"nearby-drivers\",horizontalpodautoscaler=\"routing\"}) or vector(0)" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 2 }] } } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "breaker",
+      "description": "1 quando o matching para de chamar o routing. Abre na quinta falha seguida e deixa passar uma sonda depois de 10s. A corrida já cai no Haversine na primeira falha do eta:batch.",
+      "gridPos": { "x": 8, "y": 3, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "max(matching_routing_breaker_open) or vector(0)" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "min": 0,
+          "max": 1,
+          "mappings": [{ "type": "value", "options": { "0": { "text": "fechado", "color": "green", "index": 0 }, "1": { "text": "aberto", "color": "red", "index": 1 } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "ride, driver, matching",
+      "description": "Pods prontos somados. Os três continuam de pé enquanto o routing sai.",
+      "gridPos": { "x": 12, "y": 3, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=~\"ride|driver|matching\"}) or vector(0)" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 3 }] } } }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Dijkstra",
+      "description": "Corridas atribuídas no intervalo com eta_engine dijkstra-one-to-many.",
+      "gridPos": { "x": 16, "y": 3, "w": 4, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ride" },
+      "targets": [{
+        "refId": "A",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ride" },
+        "editorMode": "code",
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT count(*)::float AS \"Dijkstra\" FROM ride.rides WHERE $__timeFilter(requested_at) AND status = 'DRIVER_ASSIGNED' AND eta_engine = 'dijkstra-one-to-many'"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } } }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Haversine",
+      "description": "Corridas atribuídas no intervalo com eta_engine haversine-fallback. É o sucesso do teste de falha, não um erro.",
+      "gridPos": { "x": 20, "y": 3, "w": 4, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ride" },
+      "targets": [{
+        "refId": "A",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ride" },
+        "editorMode": "code",
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT count(*)::float AS \"Haversine\" FROM ride.rides WHERE $__timeFilter(requested_at) AND status = 'DRIVER_ASSIGNED' AND eta_engine = 'haversine-fallback'"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "decimals": 0, "noValue": "0", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }, { "color": "orange", "value": 1 }] } } }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Réplicas do routing",
+      "description": "Prontas cai a 0 na falha. Desejadas é o spec do Deployment. Mínimo do HPA some junto com o autoscaler.",
+      "gridPos": { "x": 0, "y": 7, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "legendFormat": "prontas", "expr": "sum(kube_deployment_status_replicas_ready{namespace=\"nearby-drivers\",deployment=\"routing\"}) or vector(0)" },
+        { "refId": "B", "legendFormat": "desejadas", "expr": "sum(kube_deployment_spec_replicas{namespace=\"nearby-drivers\",deployment=\"routing\"}) or vector(0)" },
+        { "refId": "C", "legendFormat": "mínimo do HPA", "expr": "max(kube_horizontalpodautoscaler_spec_min_replicas{namespace=\"nearby-drivers\",horizontalpodautoscaler=\"routing\"}) or vector(0)" }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 0, "min": 0, "max": 4, "custom": { "lineInterpolation": "stepAfter", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "prontas" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "desejadas" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }] },
+          { "matcher": { "id": "byName", "options": "mínimo do HPA" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [4, 8] } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Circuit breaker",
+      "description": "Gauge do matching. 1 é breaker aberto: a chamada ao routing nem sai.",
+      "gridPos": { "x": 8, "y": 7, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "legendFormat": "aberto", "expr": "max(matching_routing_breaker_open) or vector(0)" }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 0, "min": 0, "max": 1, "custom": { "lineInterpolation": "stepAfter", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "aberto" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Rankings por motor",
+      "description": "Rankings por segundo no matching, por engine. Durante a falha só entra haversine-fallback.",
+      "gridPos": { "x": 16, "y": 7, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{engine}}", "expr": "sum by (engine) (rate(matching_rankings_total[1m]))" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "min": 0, "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "dijkstra-one-to-many" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "haversine-fallback" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Corridas",
+      "description": "Uma linha por corrida pedida no intervalo. Grafo é atribuição com o routing no ar. Fallback é atribuição com o routing fora e distância em linha reta. Buscando ainda não fechou.",
+      "gridPos": { "x": 0, "y": 15, "w": 24, "h": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ride" },
+      "targets": [{
+        "refId": "A",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "postgres-ride" },
+        "editorMode": "code",
+        "format": "table",
+        "rawQuery": true,
+        "rawSql": "SELECT\n  r.requested_at AS \"Pedido em\",\n  CASE\n    WHEN r.status = 'DRIVER_ASSIGNED' AND r.eta_engine = 'haversine-fallback' THEN 'Fallback: routing fora'\n    WHEN r.status = 'DRIVER_ASSIGNED' AND r.eta_engine = 'dijkstra-one-to-many' THEN 'Grafo: routing no ar'\n    WHEN r.status IN ('REQUESTED', 'MATCHING') THEN 'Buscando'\n    WHEN r.status = 'CANCELLED' THEN 'Cancelada'\n    WHEN r.status = 'NO_DRIVER_AVAILABLE' THEN 'Sem motorista'\n    ELSE r.status\n  END AS \"Caso\",\n  COALESCE(r.eta_engine, '') AS \"Engine\",\n  r.status AS \"Status\",\n  r.assigned_eta_s AS \"ETA s\",\n  r.assigned_distance_m AS \"Distancia m\",\n  COALESCE(r.assigned_driver_id::text, '') AS \"Motorista\",\n  r.id::text AS \"Corrida\"\nFROM ride.rides r\nWHERE $__timeFilter(r.requested_at)\nORDER BY r.requested_at DESC\nLIMIT 50"
+      }],
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "left", "cellOptions": { "type": "auto" }, "inspect": true },
+          "noValue": ""
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Pedido em" }, "properties": [{ "id": "unit", "value": "dateTimeAsLocal" }, { "id": "custom.width", "value": 170 }] },
+          {
+            "matcher": { "id": "byName", "options": "Caso" },
+            "properties": [
+              { "id": "custom.width", "value": 240 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              {
+                "id": "mappings",
+                "value": [{
+                  "type": "value",
+                  "options": {
+                    "Grafo: routing no ar": { "index": 0, "color": "green" },
+                    "Fallback: routing fora": { "index": 1, "color": "orange" },
+                    "Buscando": { "index": 2, "color": "blue" },
+                    "Cancelada": { "index": 3, "color": "#8e8e8e" },
+                    "Sem motorista": { "index": 4, "color": "red" }
+                  }
+                }]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Engine" },
+            "properties": [
+              { "id": "custom.width", "value": 220 },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              {
+                "id": "mappings",
+                "value": [{
+                  "type": "value",
+                  "options": {
+                    "dijkstra-one-to-many": { "index": 0, "color": "green" },
+                    "haversine-fallback": { "index": 1, "color": "orange" }
+                  }
+                }]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.width", "value": 180 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              {
+                "id": "mappings",
+                "value": [{
+                  "type": "value",
+                  "options": {
+                    "REQUESTED": { "index": 0, "color": "blue" },
+                    "MATCHING": { "index": 1, "color": "yellow" },
+                    "DRIVER_ASSIGNED": { "index": 2, "color": "green" },
+                    "NO_DRIVER_AVAILABLE": { "index": 3, "color": "red" },
+                    "CANCELLED": { "index": 4, "color": "#8e8e8e" }
+                  }
+                }]
+              }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "ETA s" }, "properties": [{ "id": "custom.width", "value": 80 }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Distancia m" }, "properties": [{ "id": "custom.width", "value": 110 }, { "id": "decimals", "value": 0 }] },
+          { "matcher": { "id": "byName", "options": "Motorista" }, "properties": [{ "id": "custom.width", "value": 300 }] },
+          { "matcher": { "id": "byName", "options": "Corrida" }, "properties": [{ "id": "custom.width", "value": 300 }] }
+        ]
+      }
+    }
+  ]
+}

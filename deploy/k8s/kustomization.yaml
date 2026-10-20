@@ -39,3 +39,4 @@ configMapGenerator:
     files:
       - grafana/routing-hpa.json
       - grafana/rides-flow.json
+      - grafana/resilience.json

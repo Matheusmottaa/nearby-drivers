@@ -21,8 +21,8 @@ func TestParseFixture(t *testing.T) {
 	if f.Version != "fixture-v1" {
 		t.Fatalf("version = %q, want fixture-v1", f.Version)
 	}
-	if len(f.Nodes) != 7 || len(f.Edges) != 6 {
-		t.Fatalf("size = %d nodes, %d edges, want 7 and 6", len(f.Nodes), len(f.Edges))
+	if len(f.Nodes) != 19 || len(f.Edges) != 23 {
+		t.Fatalf("size = %d nodes, %d edges, want 19 and 23", len(f.Nodes), len(f.Edges))
 	}
 
 	pickup := nodeByID(t, f, 0)

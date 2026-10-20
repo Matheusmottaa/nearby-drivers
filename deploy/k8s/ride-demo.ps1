@@ -39,14 +39,19 @@ $DriverPort = 18081
 $Pickup = @{ lat = -23.5613; lng = -46.6565 }
 # Fora do raio de 3 km: o matching publica match-failed e a corrida fica sem ranking.
 $FarPickup = @{ lat = -22.9068; lng = -43.1729 }
-# Nós do grafo em data/maps/graph.txt, do mais perto ao mais longe do embarque.
+# Nós alcançáveis a partir do embarque em data/maps/graph.txt.
+# -23.5630/-46.6565 e -23.5640/-46.6565 são o beco (reachable: false) e não entram.
 $Spots = @(
     @{ lat = -23.5613; lng = -46.6580 },
     @{ lat = -23.5590; lng = -46.6580 },
     @{ lat = -23.5601; lng = -46.6588 },
-    @{ lat = -23.5630; lng = -46.6565 },
-    @{ lat = -23.5640; lng = -46.6565 },
-    @{ lat = -23.5613; lng = -46.6600 }
+    @{ lat = -23.5613; lng = -46.6600 },
+    @{ lat = -23.5613; lng = -46.6548 },
+    @{ lat = -23.5613; lng = -46.6531 },
+    @{ lat = -23.5598; lng = -46.6548 },
+    @{ lat = -23.5628; lng = -46.6548 },
+    @{ lat = -23.5575; lng = -46.6565 },
+    @{ lat = -23.5575; lng = -46.6580 }
 )
 # Motoristas cujo heartbeat não pode parar: a corrida deles tem que continuar DRIVER_ASSIGNED.
 $script:Hold = New-Object System.Collections.Generic.List[object]
@@ -111,11 +116,15 @@ function New-Ride {
         $PickupPoint = $Pickup
     )
     $passenger = [guid]::NewGuid().ToString()
+    $trace = 'demo-' + [guid]::NewGuid().ToString('N')
     $body = @{ passenger_id = $passenger; pickup = $PickupPoint; vehicle_class = 'standard' }
-    $r = Invoke-Api -Method POST -Url "http://localhost:$RidePort/rides" -Body $body -Headers @{ 'Idempotency-Key' = [guid]::NewGuid().ToString() }
+    $r = Invoke-Api -Method POST -Url "http://localhost:$RidePort/rides" -Body $body -Headers @{
+        'Idempotency-Key' = [guid]::NewGuid().ToString()
+        'X-Request-Id'    = $trace
+    }
     if ($r.Status -ne 202) { throw "POST /rides -> $($r.Status) $($r.Data)" }
-    $ride = [pscustomobject]@{ Label = $Label; Passenger = $passenger; ID = $r.Data.id }
-    Write-Host ("corrida {0}  {1}  solicitante {2}" -f $Label, $ride.ID, $passenger)
+    $ride = [pscustomobject]@{ Label = $Label; Passenger = $passenger; ID = $r.Data.id; Trace = $trace }
+    Write-Host ("corrida {0}  {1}  solicitante {2}  trace {3}" -f $Label, $ride.ID, $passenger, $trace)
     return $ride
 }
 
@@ -219,6 +228,7 @@ try {
     $created += $nobody
     $null = Wait-Ride -Ride $nobody -Done { param($d) $d.status -eq 'NO_DRIVER_AVAILABLE' }
 
+    Send-Heartbeat -DriverID $released.ID -Spot $released.Spot
     $after = New-Ride -Label 'cancelada-com-motorista'
     $created += $after
     $null = Wait-Ride -Ride $after -Also @($released) -Done { param($d) $d.status -eq 'DRIVER_ASSIGNED' }
@@ -230,17 +240,20 @@ try {
     $quiet = (Get-Date).AddSeconds(35)
     while ((Get-Date) -lt $quiet) { Send-Hold; Start-Sleep -Seconds 5 }
 
+    Send-Heartbeat -DriverID $rematchOut.ID -Spot $rematchOut.Spot
     $again = New-Ride -Label 'sucesso-rematch'
     $created += $again
     $null = Wait-Ride -Ride $again -Also @($rematchOut) -Done { param($d) $d.status -eq 'DRIVER_ASSIGNED' -and $null -ne $d.driver -and $d.driver.id -eq $rematchOut.ID }
     $script:Hold.Add($rematchIn)
     $null = Wait-Ride -Ride $again -Done { param($d) $d.status -eq 'DRIVER_ASSIGNED' -and $null -ne $d.driver -and $d.driver.id -eq $rematchIn.ID }
 
+    Send-Heartbeat -DriverID $alone.ID -Spot $alone.Spot
     $empty = New-Ride -Label 'rematch-sem-candidato'
     $created += $empty
     $null = Wait-Ride -Ride $empty -Also @($alone) -Done { param($d) $d.status -eq 'DRIVER_ASSIGNED' -and $null -ne $d.driver -and $d.driver.id -eq $alone.ID }
     $null = Wait-Ride -Ride $empty -Done { param($d) $d.status -eq 'NO_DRIVER_AVAILABLE' }
 
+    Send-Heartbeat -DriverID $lost1.ID -Spot $lost1.Spot
     $spent = New-Ride -Label 'tentativas-esgotadas'
     $created += $spent
     $null = Wait-Ride -Ride $spent -Also @($lost1) -Done { param($d) $d.status -eq 'DRIVER_ASSIGNED' -and $null -ne $d.driver -and $d.driver.id -eq $lost1.ID }

@@ -59,7 +59,7 @@ func arcs(g *Graph, c csr) []arc {
 
 func TestBuildCSR(t *testing.T) {
 	g := fixtureGraph(t)
-	if g.Version != "fixture-v1" || g.NodeCount() != 7 || g.EdgeCount() != 6 {
+	if g.Version != "fixture-v1" || g.NodeCount() != 19 || g.EdgeCount() != 23 {
 		t.Fatalf("graph = %q, %d nodes, %d edges", g.Version, g.NodeCount(), g.EdgeCount())
 	}
 
@@ -70,6 +70,23 @@ func TestBuildCSR(t *testing.T) {
 		{4, 6, 500, 10},
 		{5, 0, 100, 80},
 		{6, 0, 500, 10},
+		{7, 0, 180, 25},
+		{8, 7, 180, 25},
+		{9, 8, 180, 25},
+		{10, 7, 170, 22},
+		{11, 8, 170, 22},
+		{11, 10, 180, 25},
+		{12, 9, 170, 22},
+		{12, 11, 180, 25},
+		{13, 7, 170, 22},
+		{14, 8, 170, 28},
+		{14, 13, 180, 25},
+		{15, 9, 170, 28},
+		{15, 14, 180, 25},
+		{16, 6, 170, 30},
+		{17, 0, 170, 30},
+		{18, 10, 180, 25},
+		{18, 17, 180, 25},
 	}
 	if got := arcs(g, g.fwd); !slices.Equal(got, wantFwd) {
 		t.Fatalf("forward = %v, want %v", got, wantFwd)
@@ -88,8 +105,8 @@ func TestBuildCSR(t *testing.T) {
 	if got := arcs(g, g.rev); !slices.Equal(got, wantRev) {
 		t.Fatalf("reverse = %v, want %v", got, wantRev)
 	}
-	if len(g.fwd.offsets) != 8 || len(g.rev.offsets) != 8 {
-		t.Fatalf("offsets = %d and %d, want 8", len(g.fwd.offsets), len(g.rev.offsets))
+	if len(g.fwd.offsets) != 20 || len(g.rev.offsets) != 20 {
+		t.Fatalf("offsets = %d and %d, want 20", len(g.fwd.offsets), len(g.rev.offsets))
 	}
 }
 

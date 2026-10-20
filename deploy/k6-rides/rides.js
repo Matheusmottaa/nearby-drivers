@@ -19,13 +19,22 @@ const ASSIGNED_HOLD_S = Number(__ENV.ASSIGNED_HOLD_S || '10');
 
 const PICKUP = { lat: -23.5613, lng: -46.6565 };
 // Nós de data/maps/graph.txt, todos dentro do raio de 3 km do embarque.
+// Os dois últimos são o beco: o nearby os vê, o Dijkstra marca reachable false.
 const SPOTS = [
   { lat: -23.5613, lng: -46.658 },
   { lat: -23.559, lng: -46.658 },
   { lat: -23.5601, lng: -46.6588 },
+  { lat: -23.5613, lng: -46.66 },
+  { lat: -23.5613, lng: -46.6548 },
+  { lat: -23.5613, lng: -46.6531 },
+  { lat: -23.5613, lng: -46.6514 },
+  { lat: -23.5598, lng: -46.6548 },
+  { lat: -23.5598, lng: -46.6531 },
+  { lat: -23.5628, lng: -46.6548 },
+  { lat: -23.5575, lng: -46.6565 },
+  { lat: -23.5575, lng: -46.658 },
   { lat: -23.563, lng: -46.6565 },
   { lat: -23.564, lng: -46.6565 },
-  { lat: -23.5613, lng: -46.66 },
 ];
 
 const jsonHeaders = { headers: { 'Content-Type': 'application/json' }, timeout: '10s' };
