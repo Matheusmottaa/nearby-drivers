@@ -36,22 +36,22 @@ $OutputEncoding = $utf8
 $Namespace = 'nearby-drivers'
 $RidePort = 18080
 $DriverPort = 18081
-$Pickup = @{ lat = -23.5613; lng = -46.6565 }
+# Nó do grafo mais próximo da Praça Raul Soares, em data/maps/graph.txt.
+$Pickup = @{ lat = -19.9226633; lng = -43.9444382 }
 # Fora do raio de 3 km: o matching publica match-failed e a corrida fica sem ranking.
 $FarPickup = @{ lat = -22.9068; lng = -43.1729 }
-# Nós alcançáveis a partir do embarque em data/maps/graph.txt.
-# -23.5630/-46.6565 e -23.5640/-46.6565 são o beco (reachable: false) e não entram.
+# Nós alcançáveis até o embarque, no centro de Belo Horizonte.
 $Spots = @(
-    @{ lat = -23.5613; lng = -46.6580 },
-    @{ lat = -23.5590; lng = -46.6580 },
-    @{ lat = -23.5601; lng = -46.6588 },
-    @{ lat = -23.5613; lng = -46.6600 },
-    @{ lat = -23.5613; lng = -46.6548 },
-    @{ lat = -23.5613; lng = -46.6531 },
-    @{ lat = -23.5598; lng = -46.6548 },
-    @{ lat = -23.5628; lng = -46.6548 },
-    @{ lat = -23.5575; lng = -46.6565 },
-    @{ lat = -23.5575; lng = -46.6580 }
+    @{ lat = -19.9221597; lng = -43.9455038 },
+    @{ lat = -19.9237873; lng = -43.9455308 },
+    @{ lat = -19.9232361; lng = -43.9438881 },
+    @{ lat = -19.9215947; lng = -43.9433979 },
+    @{ lat = -19.9202690; lng = -43.9445353 },
+    @{ lat = -19.9220458; lng = -43.9476755 },
+    @{ lat = -19.9240106; lng = -43.9475387 },
+    @{ lat = -19.9246041; lng = -43.9428877 },
+    @{ lat = -19.9254420; lng = -43.9457936 },
+    @{ lat = -19.9222332; lng = -43.9417274 }
 )
 # Motoristas cujo heartbeat não pode parar: a corrida deles tem que continuar DRIVER_ASSIGNED.
 $script:Hold = New-Object System.Collections.Generic.List[object]

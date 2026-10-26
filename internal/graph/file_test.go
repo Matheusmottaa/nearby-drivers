@@ -10,7 +10,7 @@ import (
 )
 
 func TestParseFixture(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "data", "maps", "graph.txt"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "maps", "fixture.txt"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestParseCRLF(t *testing.T) {
 }
 
 func TestLoad(t *testing.T) {
-	path := filepath.Join("..", "..", "data", "maps", "graph.txt")
+	path := filepath.Join("..", "..", "data", "maps", "fixture.txt")
 	f, err := Load(t.Context(), path)
 	if err != nil {
 		t.Fatalf("Load() = %v", err)

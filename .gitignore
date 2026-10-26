@@ -2,3 +2,4 @@ bin/
 data/maps/*
 !data/maps/.gitkeep
 !data/maps/graph.txt
+!data/maps/fixture.txt

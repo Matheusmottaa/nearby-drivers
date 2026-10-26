@@ -1,0 +1,246 @@
+:root {
+  color-scheme: dark;
+  --bg: #10140f;
+  --panel: #181e16;
+  --line: #2a3324;
+  --ink: #edf3e4;
+  --muted: #a3b097;
+  --fast: #3ddec8;
+  --short: #f0b429;
+  --reserve: #8eb6ff;
+  --north: #d7b4ff;
+  --danger: #ff6b6b;
+  --pickup: #f4f7ef;
+  --road: #3d4a38;
+  --ok: #8fd18a;
+  font-family: "Segoe UI", Aptos, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) 9.5rem;
+  min-height: 100%;
+}
+
+header, footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+footer {
+  border-bottom: 0;
+  border-top: 1px solid var(--line);
+  align-items: stretch;
+  overflow: hidden;
+}
+
+h1, h2, p { margin: 0; }
+
+h1 {
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+h2 {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.55rem;
+}
+
+.kicker {
+  color: var(--fast);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.chip {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.chip.ok { color: var(--ok); border-color: #355c38; }
+.chip.warn { color: var(--short); border-color: #6a5420; }
+.chip.bad { color: var(--danger); border-color: #6a3030; }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 26rem);
+  min-height: 0;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.75rem 0.75rem 0.4rem 1rem;
+}
+
+#map {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  cursor: crosshair;
+  background:
+    radial-gradient(circle at 50% 45%, #243024 0, #141a12 62%);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+#map.busy { cursor: progress; }
+#cars, #passengers { cursor: default; }
+
+.story {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.35;
+  padding: 0.55rem 0.2rem 0;
+}
+
+aside {
+  overflow: auto;
+  padding: 0.85rem 1.1rem 1rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.compare-wrap {
+  max-height: 220px;
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+tr.out td { color: var(--muted); }
+
+th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 550;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+th, td { padding: 0.28rem 0.35rem 0.28rem 0; }
+
+.best-d { color: var(--fast); font-weight: 650; }
+.best-h { color: var(--short); font-weight: 650; }
+
+.note { color: var(--muted); font-size: 0.75rem; margin-top: 0.35rem; }
+
+.actions { display: grid; gap: 0.4rem; }
+
+button {
+  text-align: left;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.48rem 0.65rem;
+  cursor: pointer;
+}
+
+button strong { display: block; font-size: 0.92rem; }
+button span { display: block; color: var(--muted); font-size: 0.75rem; margin-top: 0.12rem; }
+
+button:hover:not(:disabled) { border-color: #607056; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.active { border-color: var(--fast); }
+
+.rides { display: grid; gap: 0.4rem; }
+
+.ride, .empty {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  background: #141a12;
+}
+
+.ride b { font-size: 0.92rem; }
+.ride p, .empty { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
+
+.engine {
+  display: inline-block;
+  margin-top: 0.28rem;
+  border-radius: 999px;
+  padding: 0.08rem 0.45rem;
+  font-size: 0.72rem;
+}
+
+.engine.dijkstra { color: var(--fast); background: #14332f; }
+.engine.haversine { color: var(--short); background: #3a2e10; }
+
+#log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+  width: 100%;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+#log li { color: var(--muted); }
+#log .fail { color: var(--danger); }
+
+.road { stroke: var(--road); stroke-width: 3; fill: none; }
+svg.dense .road { stroke-width: 1.35; }
+svg.dense .car-name { font-size: 11px; }
+.story-line { stroke-width: 4.5; fill: none; }
+.story-line.fast { stroke: var(--fast); }
+.story-line.short { stroke: var(--short); }
+.alley { stroke: #6a5344; stroke-width: 2.5; stroke-dasharray: 5 5; fill: none; }
+.trip-line { fill: none; stroke-width: 3; stroke-dasharray: 7 6; opacity: 0.9; }
+
+.node { fill: #6d7b68; }
+.node.pickup { fill: var(--pickup); }
+.node.alley { fill: #8a6a52; }
+
+.edge-label {
+  fill: var(--ink);
+  font-size: 13px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+
+.map-label { fill: var(--muted); font-size: 13px; }
+.car-name, .passenger-name { fill: var(--ink); font-size: 13px; font-weight: 650; }
+.passenger-ring { fill: #141a12; stroke-width: 2; }
+.passenger-stem { stroke-width: 1.5; stroke-dasharray: 2 3; opacity: 0.85; }
+
+@media (max-width: 980px) {
+  body { height: auto; display: block; }
+  main { grid-template-columns: 1fr; }
+  #map { height: 28rem; }
+  aside { padding: 0.8rem 1rem 1rem; }
+  footer { height: 12rem; }
+}

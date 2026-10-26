@@ -9,19 +9,23 @@
   1. Corrida com o routing pronto: eta_engine dijkstra-one-to-many.
   2. Apaga o HPA do routing e escala o deployment para 0.
   3. Corrida com zero pods de routing: eta_engine haversine-fallback.
-  4. Recria o HPA, espera 2 pods prontos.
-  5. Corrida de novo no grafo: eta_engine dijkstra-one-to-many.
+  4. Mantém o routing em 0 por -DownSeconds. Nesse intervalo pede mais
+     corridas, para o painel mostrar réplicas em 0, o breaker aberto e
+     rankings haversine-fallback por mais do que um scrape.
+  5. Recria o HPA, espera 2 pods prontos.
+  6. Corrida de novo no grafo: eta_engine dijkstra-one-to-many.
 
   Se o script parar no meio da falha, o finally recria o HPA. Os heartbeats
-  dos três motoristas atribuídos seguem por -HoldSeconds para essas corridas
+  dos motoristas atribuídos seguem por -HoldSeconds para essas corridas
   não virarem rematch no painel.
 
 .EXAMPLE
   .\deploy\k8s\failure.ps1
-  .\deploy\k8s\failure.ps1 -HoldSeconds 600
+  .\deploy\k8s\failure.ps1 -DownSeconds 180 -HoldSeconds 600
 #>
 param(
-    [ValidateRange(10, 3600)][int]$HoldSeconds = 600
+    [ValidateRange(10, 3600)][int]$HoldSeconds = 600,
+    [ValidateRange(30, 3600)][int]$DownSeconds = 180
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,11 +39,12 @@ $DriverPort = 18083
 $Dashboard = 'http://localhost:30300/d/resilience'
 $EngineDijkstra = 'dijkstra-one-to-many'
 $EngineHaversine = 'haversine-fallback'
-$Pickup = @{ lat = -23.5613; lng = -46.6565 }
+# Nó do grafo mais próximo da Praça Raul Soares, em data/maps/graph.txt.
+$Pickup = @{ lat = -19.9226633; lng = -43.9444382 }
 $Spots = @(
-    @{ lat = -23.5613; lng = -46.6580 },
-    @{ lat = -23.5590; lng = -46.6580 },
-    @{ lat = -23.5601; lng = -46.6588 }
+    @{ lat = -19.9221597; lng = -43.9455038 },
+    @{ lat = -19.9237873; lng = -43.9455308 },
+    @{ lat = -19.9232361; lng = -43.9438881 }
 )
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $script:Hold = New-Object System.Collections.Generic.List[object]
@@ -369,13 +374,36 @@ try {
     $results += Request-Engine -Label 'fallback' -Engine $EngineHaversine
 
     Write-Host ''
-    Write-Host '== 4. subindo o routing =='
+    Write-Host "== 4. routing fora por ${DownSeconds}s =="
+    $downUntil = (Get-Date).AddSeconds($DownSeconds)
+    $downIndex = 4
+    while ((Get-Date) -lt $downUntil) {
+        $left = ($downUntil - (Get-Date)).TotalSeconds
+        if ($left -lt 25) {
+            Send-Hold
+            $slice = [Math]::Min(5, [Math]::Ceiling($left))
+            if ($slice -gt 0) { Start-Sleep -Seconds $slice }
+            continue
+        }
+        $null = New-DemoDriver -Role "queda-$downIndex" -Index $downIndex
+        $results += Request-Engine -Label "queda-$downIndex" -Engine $EngineHaversine
+        $downIndex++
+        Send-Hold
+        if ((Get-Date) -lt $downUntil) { Start-Sleep -Seconds 8 }
+    }
+
+    Write-Host ''
+    Write-Host '== 5. subindo o routing =='
     Restore-Routing
     Wait-Routing -Ready 2
     $script:RoutingDown = $false
 
     Write-Host ''
-    Write-Host '== 5. corrida de novo no grafo =='
+    Write-Host '== 6. corrida de novo no grafo =='
+    # As corridas da queda reservam os motoristas criados antes. Sem um
+    # disponível novo, o retorno ao grafo cai em NO_DRIVER_AVAILABLE.
+    $null = New-DemoDriver -Role 'volta-grafo' -Index 3
+    Send-Hold
     $results += Request-Engine -Label 'volta' -Engine $EngineDijkstra
 
     Write-Host ''

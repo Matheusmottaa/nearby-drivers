@@ -5,7 +5,7 @@ BIN_DIR := bin
 K8S_NS := nearby-drivers
 METRICS_SERVER_URL := https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
 
-.PHONY: help build test vet fmt tidy clean docker-build k8s-check k8s-up k8s-load k8s-rides k8s-down $(addprefix build-,$(SERVICES)) $(addprefix docker-build-,$(SERVICES)) $(addprefix run-,$(SERVICES))
+.PHONY: help build test vet fmt tidy clean docker-build k8s-check k8s-up k8s-load k8s-rides k8s-down demo $(addprefix build-,$(SERVICES)) $(addprefix docker-build-,$(SERVICES)) $(addprefix run-,$(SERVICES))
 
 help:
 	@echo "build                  compila os 4 serviços em $(BIN_DIR)/"
@@ -19,6 +19,7 @@ help:
 	@echo "k8s-load               roda o Job do k6 contra o routing no cluster"
 	@echo "k8s-rides              k6 com DRIVERS motoristas e PASSENGERS solicitantes (30 e 8)"
 	@echo "k8s-down               remove o namespace $(K8S_NS)"
+	@echo "demo                   sobe a apresentação em http://127.0.0.1:8090"
 	@echo "clean                  remove $(BIN_DIR)/"
 
 build: $(addprefix build-,$(SERVICES))
@@ -88,6 +89,9 @@ k8s-rides: k8s-check
 k8s-down:
 	kubectl delete namespace $(K8S_NS) --ignore-not-found
 	kubectl delete clusterrole,clusterrolebinding nearby-drivers-prometheus nearby-drivers-kube-state-metrics --ignore-not-found
+
+demo:
+	go run ./web/demo
 
 clean:
 	rm -rf $(BIN_DIR)

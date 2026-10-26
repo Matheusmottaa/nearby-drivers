@@ -13,7 +13,7 @@ import (
 
 func fixtureGraph(t *testing.T) *Graph {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "data", "maps", "graph.txt"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "maps", "fixture.txt"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}

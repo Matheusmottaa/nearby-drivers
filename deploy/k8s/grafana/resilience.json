@@ -18,7 +18,7 @@
       "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
       "options": {
         "mode": "markdown",
-        "content": "**Teste:** `deploy/k8s/failure.ps1` sobe uma corrida com o routing no ar (`dijkstra-one-to-many`), remove o HPA, escala o routing para 0 e pede outra corrida (`haversine-fallback`). Depois recria o HPA, espera 2 pods e pede uma terceira corrida, de novo no grafo. Ride, driver e matching ficam no ar o tempo todo."
+        "content": "**Teste:** `deploy/k8s/failure.ps1` sobe uma corrida com o routing no ar (`dijkstra-one-to-many`), remove o HPA e escala o routing para 0. A queda dura 3 minutos (`-DownSeconds`): nesse intervalo o script segue pedindo corridas (`haversine-fallback`), para réplicas, breaker e rankings ficarem visíveis. Depois recria o HPA, espera 2 pods e pede outra corrida, de novo no grafo. Ride, driver e matching ficam no ar o tempo todo."
       }
     },
     {

@@ -17,24 +17,21 @@ const HOLD = __ENV.HOLD || '3m';
 const HEARTBEAT_S = Number(__ENV.HEARTBEAT_S || '5');
 const ASSIGNED_HOLD_S = Number(__ENV.ASSIGNED_HOLD_S || '10');
 
-const PICKUP = { lat: -23.5613, lng: -46.6565 };
-// Nós de data/maps/graph.txt, todos dentro do raio de 3 km do embarque.
-// Os dois últimos são o beco: o nearby os vê, o Dijkstra marca reachable false.
+const PICKUP = { lat: -19.9226633, lng: -43.9444382 };
+// Nós de data/maps/graph.txt perto da Praça Raul Soares, dentro do raio de 3 km.
 const SPOTS = [
-  { lat: -23.5613, lng: -46.658 },
-  { lat: -23.559, lng: -46.658 },
-  { lat: -23.5601, lng: -46.6588 },
-  { lat: -23.5613, lng: -46.66 },
-  { lat: -23.5613, lng: -46.6548 },
-  { lat: -23.5613, lng: -46.6531 },
-  { lat: -23.5613, lng: -46.6514 },
-  { lat: -23.5598, lng: -46.6548 },
-  { lat: -23.5598, lng: -46.6531 },
-  { lat: -23.5628, lng: -46.6548 },
-  { lat: -23.5575, lng: -46.6565 },
-  { lat: -23.5575, lng: -46.658 },
-  { lat: -23.563, lng: -46.6565 },
-  { lat: -23.564, lng: -46.6565 },
+  { lat: -19.9221597, lng: -43.9455038 },
+  { lat: -19.9237873, lng: -43.9455308 },
+  { lat: -19.9232361, lng: -43.9438881 },
+  { lat: -19.9215947, lng: -43.9433979 },
+  { lat: -19.920269, lng: -43.9445353 },
+  { lat: -19.9220458, lng: -43.9476755 },
+  { lat: -19.9240106, lng: -43.9475387 },
+  { lat: -19.9246041, lng: -43.9428877 },
+  { lat: -19.925442, lng: -43.9457936 },
+  { lat: -19.9222332, lng: -43.9417274 },
+  { lat: -19.9198466, lng: -43.9468618 },
+  { lat: -19.9206022, lng: -43.9485607 },
 ];
 
 const jsonHeaders = { headers: { 'Content-Type': 'application/json' }, timeout: '10s' };
@@ -114,8 +111,11 @@ export function setup() {
 }
 
 export function heartbeat(data) {
-  const driver = data.drivers[__VU - 1];
+  // __VU é global aos dois cenários. O índice direto caía fora da lista,
+  // a função voltava sem sleep e o k6 estourava a memória.
+  const driver = data.drivers[(__VU - 1) % data.drivers.length];
   if (!driver) {
+    sleep(HEARTBEAT_S);
     return;
   }
   const seq = (__ITER + 2);

@@ -357,8 +357,8 @@ def slide_apps(prs):
     apps = [
         ("RIDE-SERVICE", "A corrida", "Cria o pedido, guarda o estado e confirma o motorista.", "1 instância", AMBER, AMBER_WASH),
         ("DRIVER-SERVICE", "A posição", "Sabe quais motoristas estão perto e disponíveis.", "1 instância", TEAL, TEAL_WASH),
-        ("MATCHING-SERVICE", "A lista", "Ordena os candidatos por quem chega antes.", "1 instância", INK_SOFT, INK_WASH),
-        ("ROUTING-SERVICE", "O tempo", "Calcula quanto cada um leva pelas ruas.", "2 instâncias", CORAL, CORAL_WASH),
+        ("MATCHING-SERVICE", "A lista", "Ordena os candidatos por quem chega antes.", "de 1 a 3", INK_SOFT, INK_WASH),
+        ("ROUTING-SERVICE", "O tempo", "Calcula quanto cada um leva pelas ruas.", "de 2 a 4", CORAL, CORAL_WASH),
     ]
     positions = [(0.62, 2.25), (6.95, 2.25), (0.62, 4.55), (6.95, 4.55)]
     for (label, name, body, meta, tone, wash), (x, y) in zip(apps, positions):
@@ -372,7 +372,8 @@ def slide_apps(prs):
     notes(
         slide,
         "Ride é a dona do estado. Driver responde quem está perto. Matching só monta o ranking. "
-        "Routing só devolve tempo e distância. Ride, driver e matching têm uma instância. Routing tem duas, porque não guarda estado.",
+        "Routing só devolve tempo e distância. Ride e driver ficam em uma instância: cada um guarda estado. "
+        "Matching sobe de 1 a 3 e routing de 2 a 4 quando a CPU passa de 60%.",
     )
 
 
@@ -709,8 +710,8 @@ def slide_routing(prs):
 
     points = [
         ("Mapa na memória", "Cada réplica lê o mesmo arquivo na subida. Depois disso o mapa não muda."),
-        ("Duas réplicas", "Não há estado para sincronizar. O nginx manda a busca para quem está pronto."),
-        ("Se lotar, tenta a outra", "Há um limite de buscas ao mesmo tempo. Passou disso, a outra réplica assume."),
+        ("Cresce com a CPU", "Começa em duas e vai até quatro. Não há estado para copiar entre elas."),
+        ("Se lotar, tenta de novo", "Há um limite de buscas ao mesmo tempo. A réplica cheia pede para tentar outra."),
     ]
     x = 0.62
     for name, body in points:
@@ -851,7 +852,7 @@ def slide_infra(prs):
     title(slide, "O que fica em volta", size=32)
 
     items = [
-        (AMBER, "nginx", "A porta", "Passageiro e motorista entram por um endereço. O balanceamento do routing fica interno."),
+        (AMBER, "Kubernetes", "A escala", "Ride e driver ficam em um pod. Matching e routing crescem quando a CPU passa de 60%."),
         (TEAL, "Kafka", "O aviso", "A busca começa depois do aceite. Um serviço não fica preso esperando o outro."),
         (INK_SOFT, "PostgreSQL", "O registro", "Corrida e cadastro do motorista. É o que não pode sumir."),
         (CORAL, "Redis", "O atalho", "Reserva rápida e pedido repetido. Expira sozinho. Não é a fonte da verdade."),
@@ -867,7 +868,8 @@ def slide_infra(prs):
 
     notes(
         slide,
-        "nginx na porta 8080 para rides e drivers. Routing só na rede interna, porta 8081, com health check em readyz. "
+        "No cluster: ride 1, driver 1, matching de 1 a 3, routing de 2 a 4. "
+        "O autoscaler olha 60% de CPU e sobe um pod a cada 30 segundos. "
         "Kafka: rides por 7 dias, localização por 5 minutos, presença por 1 hora. "
         "Redis sem persistência: só TTL. Postgres 17 com schemas ride e driver separados.",
     )
@@ -896,8 +898,9 @@ def slide_where(prs):
 
     notes(
         slide,
-        "Ride, driver e matching: uma instância. O índice espacial do driver vive naquele processo. "
-        "Routing: duas réplicas stateless. Redis guarda idempotência por 24 h, reserva por 30 s, última posição por 60 s e dedup de evento por 1 h. "
+        "Ride e driver: uma instância. O índice espacial do driver vive naquele processo. "
+        "Matching de 1 a 3, uma cópia por partição do pedido. Routing de 2 a 4, sem estado. "
+        "Redis guarda idempotência por 24 h, reserva por 30 s, última posição por 60 s e dedup de evento por 1 h. "
         "Nada disso é a garantia final.",
     )
 

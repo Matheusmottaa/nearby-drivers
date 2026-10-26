@@ -50,7 +50,7 @@ func TestAssignRide(t *testing.T) {
 	driverAddr := freeAddr(t)
 	rideAddr := freeAddr(t)
 	matchAddr := freeAddr(t)
-	graph := filepath.Join(root, "data", "maps", "graph.txt")
+	graph := filepath.Join(root, "data", "maps", "fixture.txt")
 	matchLog := filepath.Join(bin, "matching.log")
 
 	stopRouting := startService(t, filepath.Join(bin, exeName("routing-service")), filepath.Join(bin, "routing.log"),

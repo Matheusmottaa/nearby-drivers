@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nearby-drivers</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header>
+    <div class="title">
+      <p class="kicker">Praça Raul Soares</p>
+      <h1>nearby-drivers</h1>
+    </div>
+    <div class="chips">
+      <p id="backends" class="chip">serviços</p>
+      <p id="cluster" class="chip">routing</p>
+    </div>
+  </header>
+  <main>
+    <section class="stage">
+      <svg id="map" viewBox="0 0 920 640" role="img" aria-label="Mapa do centro de Belo Horizonte"></svg>
+      <p id="story" class="story">Carregando o grafo.</p>
+    </section>
+    <aside>
+      <section>
+        <h2>Quem chega antes</h2>
+        <div class="compare-wrap">
+          <table id="compare">
+            <thead>
+              <tr><th>Carro</th><th>Dijkstra</th><th>Haversine</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="note">Os 10 mais próximos em linha reta entram no matching. Haversine a 30 km/h. Dijkstra usa o tempo da rua.</p>
+      </section>
+      <section>
+        <h2>Cenários</h2>
+        <div id="actions" class="actions"></div>
+      </section>
+      <section>
+        <h2>Corridas</h2>
+        <div id="rides" class="rides"></div>
+      </section>
+    </aside>
+  </main>
+  <footer>
+    <ol id="log"></ol>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -27,10 +27,10 @@ export const options = {
   },
 };
 
-// Embarque e motorista da fixture de data/maps/graph.txt (nós 0 e 1).
+// Embarque na Praça Raul Soares e um nó vizinho de data/maps/graph.txt.
 const body = JSON.stringify({
-  destination: { lat: -23.5613, lng: -46.6565 },
-  origins: [{ lat: -23.5601, lng: -46.6588 }],
+  destination: { lat: -19.9226633, lng: -43.9444382 },
+  origins: [{ lat: -19.9221597, lng: -43.9455038 }],
   max_radius_m: 15000,
 });
 

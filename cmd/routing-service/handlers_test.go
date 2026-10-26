@@ -14,7 +14,7 @@ import (
 	"github.com/Matheusmottaa/nearby-drivers/internal/problem"
 )
 
-const fixturePath = "../../data/maps/graph.txt"
+const fixturePath = "../../data/maps/fixture.txt"
 
 // The fixture: pickup at node 0, corridor from node 1, dead end at nodes 2 and 3.
 const (
